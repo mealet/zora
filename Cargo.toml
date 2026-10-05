@@ -2,8 +2,13 @@
 name = "zora"
 version = "0.1.0"
 edition = "2024"
+description = "The Zeen package manager"
+authors = ["mealet <workjason34@gmail.com>"]
+repository = "https://github.com/mealet/zora"
+license = "Apache-2.0"
 
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
+colored = "3.1.1"
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.1.6"
