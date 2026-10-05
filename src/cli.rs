@@ -1,14 +1,11 @@
+use std::fmt::Display;
+
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use colored::Colorize;
 
 /// Main CLI parser struct
 #[derive(Debug, Parser)]
-#[command(
-    author,
-    version,
-    about = "The Zeen package manager",
-    long_about = None,
-    help_template = "{options}"
-)]
+#[command(author, version, about = "The Zeen package manager")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -17,31 +14,28 @@ pub struct Cli {
 /// Subcommand enum
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// `zora init`
+    /// Initialize project in current directory
     Init(InitArgs),
 
-    /// `zora new`
+    /// Create new project by name
     New(NewArgs),
 
-    /// `zora build`
+    /// Build the project
     Build(BuildArgs),
 
-    /// `zora run`
+    /// Build and run the project
     Run(RunArgs),
 
-    /// `zora test`
+    /// Run project's test suite
     Test,
 
-    /// `zora test`
+    /// Add new dependency to the project
     Add(AddArgs),
 
-    /// `zora remove`
+    /// Remove dependency from the project
     Remove(RemoveArgs),
 
-    /// `zora update`
-    Update,
-
-    /// `zora check`
+    /// Check project config and source
     Check,
 }
 
@@ -126,4 +120,26 @@ pub struct AddArgs {
 pub struct RemoveArgs {
     #[arg(value_name = "name")]
     pub name: String,
+}
+
+// ==== Helpers Functions ====
+
+pub fn println_error(message: impl Display) {
+    eprintln!("{} {}", "[Error]:".red().bold(), message);
+}
+
+pub fn println_warn(message: impl Display) {
+    eprintln!("{} {}", "[Warn]:".yellow().bold(), message);
+}
+
+pub fn println_info(prefix: impl Display, message: impl Display) {
+    eprintln!("{} {}", format!("{}", prefix).blue().bold(), message);
+}
+
+pub fn println_primary(message: impl Display) {
+    println!("{}", message.to_string().bold().blue());
+}
+
+pub fn println_basic(message: impl Display) {
+    println!("{}", message);
 }
