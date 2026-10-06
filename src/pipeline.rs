@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::{
     cli,
@@ -19,4 +19,40 @@ pub fn load_manifest_or_exit() -> (Manifest, PathBuf) {
 
         std::process::exit(1);
     })
+}
+
+// ==== Initialization Commands ====
+
+pub fn cmd_init(args: &cli::InitArgs) {
+    todo!()
+}
+
+pub fn cmd_new(args: &cli::NewArgs) {
+    todo!()
+}
+
+// ==== Manifest Required Commands ====
+
+pub fn cmd_check(manifest: &Manifest, path: &Path) {
+    todo!()
+}
+
+pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, path: &Path) {
+    todo!()
+}
+
+pub fn cmd_run(args: cli::RunArgs, manifest: &Manifest, path: &Path) {
+    todo!()
+}
+
+pub fn cmd_add(args: cli::AddArgs, manifest: &Manifest, path: &Path) {
+    todo!()
+}
+
+pub fn cmd_remove(args: cli::RemoveArgs, manifest: &Manifest, path: &Path) {
+    todo!()
+}
+
+pub fn cmd_test(manifest: &Manifest, path: &Path) {
+    todo!()
 }

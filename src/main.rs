@@ -7,6 +7,33 @@ mod manifest;
 mod pipeline;
 
 fn main() {
-    let _ = pipeline::load_manifest_or_exit();
     let args = cli::Cli::parse();
+
+    // initialization commands
+    match &args.command {
+        cli::Commands::Init(args) => {
+            pipeline::cmd_init(args);
+            return;
+        }
+        cli::Commands::New(args) => {
+            pipeline::cmd_new(args);
+            return;
+        }
+        _ => {}
+    }
+
+    // commands with manifest required
+
+    let (manifest, path) = pipeline::load_manifest_or_exit();
+
+    match args.command {
+        cli::Commands::Init(_) | cli::Commands::New(_) => unreachable!(),
+
+        cli::Commands::Check => pipeline::cmd_check(&manifest, &path),
+        cli::Commands::Build(args) => pipeline::cmd_build(args, &manifest, &path),
+        cli::Commands::Run(args) => pipeline::cmd_run(args, &manifest, &path),
+        cli::Commands::Add(args) => pipeline::cmd_add(args, &manifest, &path),
+        cli::Commands::Remove(args) => pipeline::cmd_remove(args, &manifest, &path),
+        cli::Commands::Test => pipeline::cmd_test(&manifest, &path),
+    }
 }
