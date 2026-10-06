@@ -124,6 +124,11 @@ pub struct RemoveArgs {
 
 // ==== Helpers Functions ====
 
+pub fn exit_with_error(message: impl Display) -> ! {
+    println_error(message);
+    std::process::exit(1);
+}
+
 pub fn println_error(message: impl Display) {
     eprintln!("{} {}", "[Error]:".red().bold(), message);
 }
