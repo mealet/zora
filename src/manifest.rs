@@ -80,13 +80,24 @@ impl Manifest {
 
         let manifest_config = manifest_path.ok_or(io::Error::new(
             io::ErrorKind::NotFound,
-            format!("manifest `Zora.toml` not found (in `{}`)", cwd.to_string_lossy()),
+            format!(
+                "manifest `Zora.toml` not found (in `{}`)",
+                cwd.to_string_lossy()
+            ),
         ))?;
 
         let manifest_content = fs::read_to_string(&manifest_config)?;
         let manifest: Self = toml::from_str(&manifest_content)?;
 
-        Ok((manifest, manifest_config))
+        let root_path = manifest_config
+            .parent()
+            .ok_or(io::Error::new(
+                io::ErrorKind::NotFound,
+                "unable to detect project's root (manifest found, but directory not)",
+            ))?
+            .to_path_buf();
+
+        Ok((manifest, root_path))
     }
 }
 

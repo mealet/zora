@@ -24,16 +24,16 @@ fn main() {
 
     // commands with manifest required
 
-    let (manifest, path) = pipeline::load_manifest_or_exit();
+    let (manifest, root) = pipeline::load_manifest_or_exit();
 
     match args.command {
         cli::Commands::Init(_) | cli::Commands::New(_) => unreachable!(),
 
-        cli::Commands::Check => pipeline::cmd_check(&manifest, &path),
-        cli::Commands::Build(args) => pipeline::cmd_build(args, &manifest, &path),
-        cli::Commands::Run(args) => pipeline::cmd_run(args, &manifest, &path),
-        cli::Commands::Add(args) => pipeline::cmd_add(args, &manifest, &path),
-        cli::Commands::Remove(args) => pipeline::cmd_remove(args, &manifest, &path),
-        cli::Commands::Test => pipeline::cmd_test(&manifest, &path),
+        cli::Commands::Check => pipeline::cmd_check(&manifest, &root),
+        cli::Commands::Build(args) => pipeline::cmd_build(args, &manifest, &root),
+        cli::Commands::Run(args) => pipeline::cmd_run(args, &manifest, &root),
+        cli::Commands::Add(args) => pipeline::cmd_add(args, &manifest, &root),
+        cli::Commands::Remove(args) => pipeline::cmd_remove(args, &manifest, &root),
+        cli::Commands::Test => pipeline::cmd_test(&manifest, &root),
     }
 }
