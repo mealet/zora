@@ -57,7 +57,7 @@ impl Manifest {
     pub fn load() -> Result<(Self, PathBuf), LoadError> {
         let cwd = std::env::current_dir()?;
 
-        let mut cursor = cwd;
+        let mut cursor = cwd.clone();
         let mut depth = 0;
         let mut manifest_path: Option<PathBuf> = None;
 
@@ -80,7 +80,7 @@ impl Manifest {
 
         let manifest_config = manifest_path.ok_or(io::Error::new(
             io::ErrorKind::NotFound,
-            "manifest `Zora.toml` not found",
+            format!("manifest `Zora.toml` not found (in `{}`)", cwd.to_string_lossy()),
         ))?;
 
         let manifest_content = fs::read_to_string(&manifest_config)?;
