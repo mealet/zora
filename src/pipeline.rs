@@ -94,14 +94,15 @@ pub fn cmd_check(manifest: &Manifest, root: &Path) {
         let output_verification = !(output.contains(".")
             || output.contains(" ")
             || output.contains("/")
-            || output.contains("\\"));
+            || output.contains("\\")
+            || output.is_empty());
 
         if !output_verification {
-            cli::println_error("Field `[build].output` should have only name without extension");
+            cli::exit_with_error("Field `[build].output` should have only name without extension");
         }
 
         if let Some(ref flags) = build_section.flags {
-            flags.iter().inspect(|flag| {
+            flags.iter().for_each(|flag| {
                 if !AVAILABLE_BUILD_FLAGS.contains(&flag.as_str()) {
                     cli::exit_with_error(format!("Field `[build].flags` doesn't have '{}'", flag));
                 }
