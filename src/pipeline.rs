@@ -5,6 +5,21 @@ use crate::{
     manifest::{self, Manifest},
 };
 
+/// Verify that Zeen compiler is installed
+pub fn verify_zeen_installed() {
+    let available = std::process::Command::new("zeen")
+        .arg("--version")
+        .output()
+        .is_ok_and(|output| output.status.success());
+
+    if !available {
+        cli::println_error(
+            "Zeen compiler is not found, please verify installation (check `zeen --version`)",
+        );
+        std::process::exit(1);
+    }
+}
+
 /// Layer to load manifest, or display an error if not found
 pub fn load_manifest_or_exit() -> (Manifest, PathBuf) {
     Manifest::load().unwrap_or_else(|err| {
