@@ -39,10 +39,10 @@ pub fn add_int(a: i32, b: i32) i32 {
 const LIB_TYPE_DEFAULT: manifest::PackageType = manifest::PackageType::Dynamic;
 const INIT_VERSION_DEFAULT: &str = "0.0.0";
 
-static ZEEN_VERSION: LazyLock<VersionReq> = LazyLock::new(verify_zeen_installed);
+static ZEEN_VERSION: LazyLock<(Version, VersionReq)> = LazyLock::new(verify_zeen_installed);
 
 /// Verify that Zeen compiler is installed
-pub fn verify_zeen_installed() -> VersionReq {
+pub fn verify_zeen_installed() -> (Version, VersionReq) {
     let output = Command::new(COMPILER_COMMAND)
         .arg("--version")
         .stdout(Stdio::piped())
@@ -58,11 +58,19 @@ pub fn verify_zeen_installed() -> VersionReq {
             let caps = re.captures(&stdout);
 
             if let Some(caps) = caps {
-                return VersionReq::parse(format!("^{}", &caps[1]).as_str()).unwrap_or_else(
+                let ver = Version::parse(&caps[1]).unwrap_or_else(
                     |err| {
                         cli::exit_with_error(format!("Error parsing Zeen version: {}", err));
                     },
                 );
+
+                let ver_req = VersionReq::parse(format!("^{}", &caps[1]).as_str()).unwrap_or_else(
+                    |err| {
+                        cli::exit_with_error(format!("Error parsing Zeen version: {}", err));
+                    },
+                );
+
+                return (ver, ver_req);
             }
 
             cli::exit_with_error(
@@ -178,7 +186,7 @@ fn project_init(name: impl AsRef<str>, root: &Path, is_lib: bool) {
         package: manifest::Package {
             name: name.as_ref().to_owned(),
             version: Version::new(0, 0, 0),
-            zeen: ZEEN_VERSION.to_owned(),
+            zeen: ZEEN_VERSION.1.to_owned(),
             r#type: if is_lib {
                 LIB_TYPE_DEFAULT
             } else {
@@ -287,6 +295,14 @@ pub fn cmd_check(manifest: &Manifest, root: &Path) {
     // Lockfile and Zeen version checks
 
     let lockfile = ensure_lockfile(root, manifest);
+
+    for package in lockfile.package {
+        let version_requirement = package.zeen;
+
+        if !version_requirement.matches(&ZEEN_VERSION.0) {
+            cli::exit_with_error(format!("Package '{}': requries Zeen '{}', but current is '{}'", package.name, version_requirement, ZEEN_VERSION.0));
+        }
+    }
 
     // Paths checks
 
