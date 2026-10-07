@@ -19,12 +19,14 @@ fn main() {
     @println("Hello, Zeen!");
     @println("2 + 2 = {}", 2 + 2);
 }
+
 "#;
 
 const INIT_LIB_CODE: &str = r#"
 pub fn add_int(a: i32, b: i32) i32 {
     a + b
 }
+
 "#;
 
 const LIB_TYPE_DEFAULT: manifest::PackageType = manifest::PackageType::Dynamic;
