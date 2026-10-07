@@ -100,6 +100,45 @@ pub fn load_optional_lockfile(root: &Path) -> Option<Lockfile> {
         .ok()
 }
 
+fn ensure_lockfile(root: &Path, manifest: &Manifest) -> Lockfile {
+    if let Some(mut lockfile) = load_optional_lockfile(root) {
+        if lockfile.sync_root(manifest) {
+            let lockfile_content = toml::to_string_pretty(&lockfile).unwrap_or_else(|err| {
+                cli::exit_with_error(format!("Unable to serialize toml lockfile: {}", err))
+            });
+
+            fs::write(root.join(lockfile::LOCKFILE_CONFIG), lockfile_content).unwrap_or_else(
+                |err| {
+                    cli::exit_with_error(format!(
+                        "Error with writing '{}': {}",
+                        lockfile::LOCKFILE_CONFIG,
+                        err
+                    ))
+                },
+            );
+        }
+
+        // TODO: Dependencies resolver sync
+
+        return lockfile;
+    }
+
+    let fresh_lockfile = Lockfile::fresh(manifest);
+    let lockfile_content = toml::to_string_pretty(&fresh_lockfile).unwrap_or_else(|err| {
+        cli::exit_with_error(format!("Unable to serialize toml lockfile: {}", err))
+    });
+
+    fs::write(root.join(lockfile::LOCKFILE_CONFIG), lockfile_content).unwrap_or_else(|err| {
+        cli::exit_with_error(format!(
+            "Error with writing '{}': {}",
+            lockfile::LOCKFILE_CONFIG,
+            err
+        ))
+    });
+
+    fresh_lockfile
+}
+
 /// Compiler's command with environment
 fn compiler_command(src_dir: &Path) -> Command {
     let mut command = Command::new(COMPILER_COMMAND);
@@ -172,19 +211,7 @@ fn project_init(name: impl AsRef<str>, root: &Path, is_lib: bool) {
     });
 
     // `Zora.lock` lockfile
-    let lockfile = Lockfile::fresh(&manifest);
-
-    let lockfile_content = toml::to_string_pretty(&lockfile).unwrap_or_else(|err| {
-        cli::exit_with_error(format!("Unable to serialize toml lockfile: {}", err))
-    });
-
-    fs::write(root.join(lockfile::LOCKFILE_CONFIG), lockfile_content).unwrap_or_else(|err| {
-        cli::exit_with_error(format!(
-            "Error with writing '{}': {}",
-            lockfile::LOCKFILE_CONFIG,
-            err
-        ))
-    });
+    let _ = ensure_lockfile(root, &manifest);
 
     // entry file (`main.zn`/`index.zn`)
     let entry_file = if is_lib {
@@ -257,7 +284,11 @@ pub fn cmd_new(args: &cli::NewArgs) {
 // ==== Manifest Required Commands ====
 
 pub fn cmd_check(manifest: &Manifest, root: &Path) {
-    // 1. Paths checks
+    // Lockfile and Zeen version checks
+
+    let lockfile = ensure_lockfile(root, manifest);
+
+    // Paths checks
 
     let src_available = root.join("src").is_dir();
 
@@ -278,7 +309,7 @@ pub fn cmd_check(manifest: &Manifest, root: &Path) {
         ));
     }
 
-    // 2. Build section checks
+    // Build section checks
 
     if let Some(ref build_section) = manifest.build {
         let output = &build_section.output;
@@ -301,9 +332,7 @@ pub fn cmd_check(manifest: &Manifest, root: &Path) {
         }
     }
 
-    // TODO: 3. Dependencies check and Zeen version check
-
-    // 4. Zeen sources check (via `--check` flag)
+    // Zeen sources check (via `--check` flag)
 
     let src_dir = root.join(SOURCE_DIRECTORY);
 
