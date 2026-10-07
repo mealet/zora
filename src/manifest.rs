@@ -1,4 +1,4 @@
-use semver::Version;
+use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, io, path::PathBuf};
 use url::Url;
@@ -15,7 +15,7 @@ pub struct Manifest {
 pub struct Package {
     pub name: String,
     pub version: Version,
-    pub zeen: Version,
+    pub zeen: VersionReq,
     pub r#type: PackageType,
 
     pub authors: Option<Vec<String>>,
@@ -45,7 +45,7 @@ pub struct Build {
 #[serde(untagged)]
 pub enum Dependency {
     Short(String),
-    Detailed { git: String, branch: Option<String> },
+    Detailed { git: Url, branch: Option<String> },
 }
 
 // Load implementation

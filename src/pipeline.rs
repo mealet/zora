@@ -6,7 +6,7 @@ use std::{
     sync::LazyLock,
 };
 
-use semver::Version;
+use semver::{Version, VersionReq};
 
 use crate::{
     cli,
@@ -38,10 +38,10 @@ pub fn add_int(a: i32, b: i32) i32 {
 const LIB_TYPE_DEFAULT: manifest::PackageType = manifest::PackageType::Dynamic;
 const INIT_VERSION_DEFAULT: &str = "0.0.0";
 
-static ZEEN_VERSION: LazyLock<Version> = LazyLock::new(verify_zeen_installed);
+static ZEEN_VERSION: LazyLock<VersionReq> = LazyLock::new(verify_zeen_installed);
 
 /// Verify that Zeen compiler is installed
-pub fn verify_zeen_installed() -> Version {
+pub fn verify_zeen_installed() -> VersionReq {
     let output = Command::new(COMPILER_COMMAND)
         .arg("--version")
         .stdout(Stdio::piped())
@@ -57,9 +57,11 @@ pub fn verify_zeen_installed() -> Version {
             let caps = re.captures(&stdout);
 
             if let Some(caps) = caps {
-                return Version::parse(&caps[1]).unwrap_or_else(|err| {
-                    cli::exit_with_error(format!("Error parsing Zeen version: {}", err));
-                });
+                return VersionReq::parse(format!("^{}", &caps[1]).as_str()).unwrap_or_else(
+                    |err| {
+                        cli::exit_with_error(format!("Error parsing Zeen version: {}", err));
+                    },
+                );
             }
 
             cli::exit_with_error(
@@ -274,7 +276,7 @@ pub fn cmd_check(manifest: &Manifest, root: &Path) {
         }
     }
 
-    // TODO: 3. Dependencies check
+    // TODO: 3. Dependencies check and Zeen version check
 
     // 4. Zeen sources check (via `--check` flag)
 
