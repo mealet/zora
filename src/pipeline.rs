@@ -112,6 +112,10 @@ fn init_git_repo(root: &Path) {
 /// Init project in provided dir
 /// Note: No error handling, process with exit with error display
 fn project_init(name: impl AsRef<str>, root: &Path, is_lib: bool) {
+    if root.join(manifest::MANIFEST_CONFIG).is_file() {
+        cli::exit_with_error("Project is already initialized here");
+    }
+
     let manifest = Manifest {
         package: manifest::Package {
             name: name.as_ref().to_owned(),
@@ -128,12 +132,12 @@ fn project_init(name: impl AsRef<str>, root: &Path, is_lib: bool) {
 
     // `src` directory
     fs::create_dir_all(root.join(SOURCE_DIRECTORY)).unwrap_or_else(|err| {
-        cli::exit_with_error("Unable to create source directory: {err}")
+        cli::exit_with_error(format!("Unable to create source directory: {}", err))
     });
 
     // `Zora.toml` config
     let manifest_content = toml::to_string_pretty(&manifest).unwrap_or_else(|err| {
-        cli::exit_with_error(format!("Unable to serialize toml manifest: {err}"));
+        cli::exit_with_error(format!("Unable to serialize toml manifest: {}", err));
     });
 
     fs::write(root.join(manifest::MANIFEST_CONFIG), manifest_content).unwrap_or_else(|err|
@@ -144,7 +148,9 @@ fn project_init(name: impl AsRef<str>, root: &Path, is_lib: bool) {
     let entry_file = if is_lib { TYPE_LIB_ENTRY } else { TYPE_BIN_ENTRY };
     let entry_content = if is_lib { INIT_LIB_CODE } else { INIT_BIN_CODE };
 
-    fs::write(root.join(SOURCE_DIRECTORY).join(entry_file), entry_content);
+    fs::write(root.join(SOURCE_DIRECTORY).join(entry_file), entry_content).unwrap_or_else(|err| {
+        cli::exit_with_error(format!("Error with filling entry file: {}", err))
+    });
 
     // git project init
     init_git_repo(root);
@@ -152,14 +158,14 @@ fn project_init(name: impl AsRef<str>, root: &Path, is_lib: bool) {
 
 pub fn cmd_init(args: &cli::InitArgs) {
     let cwd = std::env::current_dir().unwrap_or_else(|err| {
-        cli::exit_with_error(format!("Unable to get current working directory: {err}"));
+        cli::exit_with_error(format!("Unable to get current working directory: {}", err));
     });
     
     let name = cwd
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| {
-            cli::exit_with_error("Current directory is unnamed, use instead: `zeen new`");
+            cli::exit_with_error("Current directory is unnamed, use instead: `zora new`");
         });
 
     project_init(&name, &cwd, args.library);
