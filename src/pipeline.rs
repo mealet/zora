@@ -1,6 +1,12 @@
 use std::{
-    collections::HashMap, fs, path::{Path, PathBuf}, process::{Command, Stdio}, sync::LazyLock
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    sync::LazyLock,
 };
+
+use semver::Version;
 
 use crate::{
     cli,
@@ -32,14 +38,10 @@ pub fn add_int(a: i32, b: i32) i32 {
 const LIB_TYPE_DEFAULT: manifest::PackageType = manifest::PackageType::Dynamic;
 const INIT_VERSION_DEFAULT: &str = "0.0.0";
 
-static ZEEN_VERSION: LazyLock<String> = LazyLock::new(|| {
-    verify_zeen_installed()
-});
-
-type ZeenVersion = String;
+static ZEEN_VERSION: LazyLock<Version> = LazyLock::new(verify_zeen_installed);
 
 /// Verify that Zeen compiler is installed
-pub fn verify_zeen_installed() -> ZeenVersion {
+pub fn verify_zeen_installed() -> Version {
     let output = Command::new(COMPILER_COMMAND)
         .arg("--version")
         .stdout(Stdio::piped())
@@ -50,15 +52,20 @@ pub fn verify_zeen_installed() -> ZeenVersion {
         Ok(output) if output.status.success() => {
             let stdout = String::from_utf8_lossy(&output.stdout);
 
-            let re = regex::Regex::new(r"version:\s*(\d+\.\d+\.\d+)").expect("regex construction error");
+            let re =
+                regex::Regex::new(r"version:\s*(\d+\.\d+\.\d+)").expect("regex construction error");
             let caps = re.captures(&stdout);
 
             if let Some(caps) = caps {
-                return caps[1].to_string()
+                return Version::parse(&caps[1]).unwrap_or_else(|err| {
+                    cli::exit_with_error(format!("Error parsing Zeen version: {}", err));
+                });
             }
 
-            cli::exit_with_error("Unable to extract Zeen version, please report this: https://github.com/mealet/zora");
-        },
+            cli::exit_with_error(
+                "Unable to extract Zeen version, please report this: https://github.com/mealet/zora",
+            );
+        }
         _ => {
             cli::exit_with_error(
                 "Zeen compiler is not found, please verify installation (check `zeen --version`)",
@@ -119,9 +126,13 @@ fn project_init(name: impl AsRef<str>, root: &Path, is_lib: bool) {
     let manifest = Manifest {
         package: manifest::Package {
             name: name.as_ref().to_owned(),
-            version: INIT_VERSION_DEFAULT.to_owned(),
-            zeen: ZEEN_VERSION.to_string(),
-            r#type: if is_lib { LIB_TYPE_DEFAULT } else { manifest::PackageType::Bin },
+            version: Version::new(0, 0, 0),
+            zeen: ZEEN_VERSION.to_owned(),
+            r#type: if is_lib {
+                LIB_TYPE_DEFAULT
+            } else {
+                manifest::PackageType::Bin
+            },
             authors: None,
             repository: None,
             license: None,
@@ -140,12 +151,20 @@ fn project_init(name: impl AsRef<str>, root: &Path, is_lib: bool) {
         cli::exit_with_error(format!("Unable to serialize toml manifest: {}", err));
     });
 
-    fs::write(root.join(manifest::MANIFEST_CONFIG), manifest_content).unwrap_or_else(|err|
-        cli::exit_with_error(format!("Error with writing '{}': {}", manifest::MANIFEST_CONFIG, err))
-    );
+    fs::write(root.join(manifest::MANIFEST_CONFIG), manifest_content).unwrap_or_else(|err| {
+        cli::exit_with_error(format!(
+            "Error with writing '{}': {}",
+            manifest::MANIFEST_CONFIG,
+            err
+        ))
+    });
 
     // entry file (`main.zn`/`index.zn`)
-    let entry_file = if is_lib { TYPE_LIB_ENTRY } else { TYPE_BIN_ENTRY };
+    let entry_file = if is_lib {
+        TYPE_LIB_ENTRY
+    } else {
+        TYPE_BIN_ENTRY
+    };
     let entry_content = if is_lib { INIT_LIB_CODE } else { INIT_BIN_CODE };
 
     fs::write(root.join(SOURCE_DIRECTORY).join(entry_file), entry_content).unwrap_or_else(|err| {
@@ -160,7 +179,7 @@ pub fn cmd_init(args: &cli::InitArgs) {
     let cwd = std::env::current_dir().unwrap_or_else(|err| {
         cli::exit_with_error(format!("Unable to get current working directory: {}", err));
     });
-    
+
     let name = cwd
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
@@ -171,7 +190,13 @@ pub fn cmd_init(args: &cli::InitArgs) {
     project_init(&name, &cwd, args.library);
 
     let init_type = if args.library { "library" } else { "binary" };
-    cli::println_info("Initialized", format!("{init_type} package `{name}` (in {})", cwd.to_string_lossy()));
+    cli::println_info(
+        "Initialized",
+        format!(
+            "{init_type} package `{name}` (in {})",
+            cwd.to_string_lossy()
+        ),
+    );
 }
 
 pub fn cmd_new(args: &cli::NewArgs) {
@@ -192,7 +217,14 @@ pub fn cmd_new(args: &cli::NewArgs) {
     project_init(&args.name, &root, args.library);
 
     let init_type = if args.library { "library" } else { "binary" };
-    cli::println_info("Created new", format!("{init_type} package `{}` (in {})", args.name, cwd.to_string_lossy()));
+    cli::println_info(
+        "Created",
+        format!(
+            "new {init_type} package `{}` (in {})",
+            args.name,
+            cwd.to_string_lossy()
+        ),
+    );
 }
 
 // ==== Manifest Required Commands ====

@@ -1,5 +1,7 @@
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, io, path::PathBuf};
+use url::Url;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Manifest {
@@ -12,12 +14,12 @@ pub struct Manifest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Package {
     pub name: String,
-    pub version: String,
-    pub zeen: String,
+    pub version: Version,
+    pub zeen: Version,
     pub r#type: PackageType,
 
     pub authors: Option<Vec<String>>,
-    pub repository: Option<String>,
+    pub repository: Option<Url>,
     pub license: Option<String>,
 }
 
