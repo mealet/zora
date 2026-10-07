@@ -10,7 +10,7 @@ use semver::{Version, VersionReq};
 
 use crate::{
     cli,
-    lockfile::Lockfile,
+    lockfile::{self, LockPackage, Lockfile},
     manifest::{self, Manifest},
 };
 
@@ -167,6 +167,32 @@ fn project_init(name: impl AsRef<str>, root: &Path, is_lib: bool) {
         cli::exit_with_error(format!(
             "Error with writing '{}': {}",
             manifest::MANIFEST_CONFIG,
+            err
+        ))
+    });
+
+    // `Zora.lock` lockfile
+    let lockfile = Lockfile {
+        version: crate::lockfile::SUPPORTED_LOCK_VERSION,
+        package: vec![LockPackage {
+            name: manifest.package.name,
+            version: manifest.package.version,
+            zeen: manifest.package.zeen,
+            dependencies: vec![],
+            repository: manifest.package.repository,
+            branch: None,
+            commit: None,
+        }],
+    };
+
+    let lockfile_content = toml::to_string_pretty(&lockfile).unwrap_or_else(|err| {
+        cli::exit_with_error(format!("Unable to serialize toml lockfile: {}", err))
+    });
+
+    fs::write(root.join(lockfile::LOCKFILE_CONFIG), lockfile_content).unwrap_or_else(|err| {
+        cli::exit_with_error(format!(
+            "Error with writing '{}': {}",
+            lockfile::LOCKFILE_CONFIG,
             err
         ))
     });
