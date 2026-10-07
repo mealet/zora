@@ -1,7 +1,12 @@
+use std::{fs, path::Path};
+
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use url::Url;
 
+use crate::manifest::LoadError;
+
+pub const LOCKFILE_CONFIG: &str = "Zora.lock";
 pub const SUPPORTED_LOCK_VERSION: u32 = 1;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -68,4 +73,21 @@ where
         .collect::<Vec<_>>();
 
     values.serialize(serializer)
+}
+
+impl Lockfile {
+    pub fn load(root: &Path) -> Result<Self, LoadError> {
+        let lockfile_path = root.join(LOCKFILE_CONFIG);
+        if !lockfile_path.is_file() {
+            return Err(LoadError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Project's lockfile not found in root",
+            )));
+        }
+
+        let lockfile_content = fs::read_to_string(&lockfile_path)?;
+        let lockfile: Self = toml::from_str(&lockfile_content)?;
+
+        Ok(lockfile)
+    }
 }

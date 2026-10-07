@@ -10,6 +10,7 @@ use semver::{Version, VersionReq};
 
 use crate::{
     cli,
+    lockfile::Lockfile,
     manifest::{self, Manifest},
 };
 
@@ -81,13 +82,22 @@ pub fn load_manifest_or_exit() -> (Manifest, PathBuf) {
     Manifest::load().unwrap_or_else(|err| {
         use manifest::LoadError::*;
 
-        let error_display = match err {
-            Io(io_error) => io_error.to_string(),
-            Toml(toml_error) => toml_error.to_string(),
-        };
-
-        cli::exit_with_error(error_display);
+        cli::exit_with_error(err);
     })
+}
+
+/// Load lockfile, if error is NotFound - return None
+pub fn load_optional_lockfile(root: &Path) -> Option<Lockfile> {
+    Lockfile::load(root)
+        .map_err(|err| match err {
+            crate::manifest::LoadError::Io(ref io_err)
+                if let std::io::ErrorKind::NotFound = io_err.kind() =>
+            {
+                err
+            }
+            _ => cli::exit_with_error(format!("Lockfile error: {}", err)),
+        })
+        .ok()
 }
 
 /// Compiler's command with environment

@@ -1,6 +1,6 @@
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs, io, path::PathBuf};
+use std::{collections::HashMap, fmt::Display, fs, io, path::PathBuf};
 use url::Url;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -119,5 +119,18 @@ impl From<io::Error> for LoadError {
 impl From<toml::de::Error> for LoadError {
     fn from(value: toml::de::Error) -> Self {
         Self::Toml(value)
+    }
+}
+
+impl Display for LoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Io(err) => err.to_string(),
+                Self::Toml(err) => err.to_string(),
+            }
+        )
     }
 }
