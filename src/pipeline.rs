@@ -98,7 +98,9 @@ fn init_git_repo(root: &Path) {
         .unwrap_or(false);
 
     if initialized {
-        let gitignore_content = ["/dist"].join("\n");
+        let mut gitignore_content = ["/dist"].join("\n");
+        gitignore_content.push('\n');
+
         let _ = fs::write(root.join(".gitignore"), gitignore_content);
     }
 }
@@ -165,7 +167,24 @@ pub fn cmd_init(args: &cli::InitArgs) {
 }
 
 pub fn cmd_new(args: &cli::NewArgs) {
-    todo!()
+    let cwd = std::env::current_dir().unwrap_or_else(|err| {
+        cli::exit_with_error(format!("Unable to get current working directory: {err}"));
+    });
+
+    let root = cwd.join(&args.name);
+
+    if root.is_dir() {
+        cli::exit_with_error(format!("Dir name `{}` already taken", args.name));
+    }
+
+    fs::create_dir(&root).unwrap_or_else(|err| {
+        cli::exit_with_error(format!("Unable to create `{}` dir: {}", args.name, err));
+    });
+
+    project_init(&args.name, &root, args.library);
+
+    let init_type = if args.library { "library" } else { "binary" };
+    cli::println_info("Created new", format!("{init_type} package `{}` (in {})", args.name, cwd.to_string_lossy()));
 }
 
 // ==== Manifest Required Commands ====
