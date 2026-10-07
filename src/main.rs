@@ -9,9 +9,6 @@ mod pipeline;
 fn main() {
     let args = cli::Cli::parse();
 
-    // compiler verification
-    pipeline::verify_zeen_installed();
-
     // initialization commands
     match &args.command {
         cli::Commands::Init(args) => {
