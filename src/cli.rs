@@ -130,21 +130,21 @@ pub fn exit_with_error(message: impl Display) -> ! {
 }
 
 pub fn println_error(message: impl Display) {
-    eprintln!("{} {}", "[Error]:".red().bold(), message);
+    eprintln!("  {} {}", "[Error]:".red().bold(), message);
 }
 
 pub fn println_warn(message: impl Display) {
-    eprintln!("{} {}", "[Warn]:".yellow().bold(), message);
+    eprintln!("  {} {}", "[Warn]:".yellow().bold(), message);
 }
 
 pub fn println_info(prefix: impl Display, message: impl Display) {
-    eprintln!("{} {}", format!("{}", prefix).blue().bold(), message);
+    eprintln!("  {} {}", format!("{}", prefix).blue().bold(), message);
 }
 
 pub fn println_primary(message: impl Display) {
-    println!("{}", message.to_string().bold().blue());
+    println!("  {}", message.to_string().bold().blue());
 }
 
 pub fn println_basic(message: impl Display) {
-    println!("{}", message);
+    println!("  {}", message);
 }

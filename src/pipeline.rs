@@ -111,6 +111,8 @@ pub fn load_optional_lockfile(root: &Path) -> Option<Lockfile> {
 fn ensure_lockfile(root: &Path, manifest: &Manifest) -> Lockfile {
     if let Some(mut lockfile) = load_optional_lockfile(root) {
         if lockfile.sync_root(manifest) {
+            cli::println_info("Updating", format!("lockfile `{}` (sync actions)", lockfile::LOCKFILE_CONFIG));
+
             let lockfile_content = toml::to_string_pretty(&lockfile).unwrap_or_else(|err| {
                 cli::exit_with_error(format!("Unable to serialize toml lockfile: {}", err))
             });
@@ -130,6 +132,8 @@ fn ensure_lockfile(root: &Path, manifest: &Manifest) -> Lockfile {
 
         return lockfile;
     }
+
+    cli::println_info("Creating", format!("new lockfile `{}`", lockfile::LOCKFILE_CONFIG));
 
     let fresh_lockfile = Lockfile::fresh(manifest);
     let lockfile_content = toml::to_string_pretty(&fresh_lockfile).unwrap_or_else(|err| {
@@ -296,11 +300,11 @@ pub fn cmd_check(manifest: &Manifest, root: &Path) {
 
     let lockfile = ensure_lockfile(root, manifest);
 
-    for package in lockfile.package {
-        let version_requirement = package.zeen;
+    for package in lockfile.package.iter() {
+        let version_requirement = &package.zeen;
 
         if !version_requirement.matches(&ZEEN_VERSION.0) {
-            cli::exit_with_error(format!("Package '{}': requries Zeen '{}', but current is '{}'", package.name, version_requirement, ZEEN_VERSION.0));
+            cli::exit_with_error(format!("Package '{}': requires Zeen '{}', but current is '{}'", package.name, version_requirement, ZEEN_VERSION.0));
         }
     }
 
