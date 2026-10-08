@@ -9,9 +9,9 @@ use std::{
 use semver::{Version, VersionReq};
 
 use crate::{
-    cli,
+    cli::{self, CompilationMode},
     lockfile::{self, LockPackage, LockValidateError, Lockfile},
-    manifest::{self, Manifest},
+    manifest::{self, Manifest, PackageType},
 };
 
 const COMPILER_COMMAND: &str = "zeen";
@@ -302,7 +302,7 @@ pub fn cmd_new(args: &cli::NewArgs) {
 
 // ==== Manifest Required Commands ====
 
-pub fn cmd_check(manifest: &Manifest, root: &Path) {
+pub fn cmd_check(manifest: &Manifest, root: &Path, avoid_execution: bool) {
     // Lockfile and Zeen version checks
 
     let lockfile = ensure_lockfile(root, manifest);
@@ -416,6 +416,10 @@ pub fn cmd_check(manifest: &Manifest, root: &Path) {
 
     // Zeen sources check (via `--check` flag)
 
+    if avoid_execution {
+        return;
+    }
+
     let src_dir = root.join(SOURCE_DIRECTORY);
 
     let check_command = compiler_command(&src_dir)
@@ -431,7 +435,55 @@ pub fn cmd_check(manifest: &Manifest, root: &Path) {
 }
 
 pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) {
-    todo!()
+    cmd_check(manifest, root, true);
+
+    // basic dist directory
+    fs::create_dir_all(root.join("dist")).unwrap_or_else(|err| {
+        cli::exit_with_error(format!("Unable to create `dist` directory: {err}"));
+    });
+
+    // output target directory (for host its still dist)
+    let (target_dir, needs_create) = match args.target {
+        Some(target) => (root.join(target), true),
+        None => (root.to_path_buf(), false),
+    };
+
+    if needs_create {
+        fs::create_dir_all(&target_dir).unwrap_or_else(|err| {
+            cli::exit_with_error(format!(
+                "Unable to create `{}` directory: {err}",
+                target_dir.to_string_lossy()
+            ));
+        })
+    }
+
+    // output mode directory
+    let output_dir = match args.mode {
+        CompilationMode::Debug => target_dir.join("debug"),
+        CompilationMode::Release => target_dir.join("release"),
+    };
+
+    fs::create_dir_all(&output_dir).unwrap_or_else(|err| {
+        cli::exit_with_error(format!(
+            "Unable to create `{}` directory: {err}",
+            output_dir.to_string_lossy()
+        ));
+    });
+
+    // output file name and flags
+    let (output_name, compiler_flags) = if let Some(build) = &manifest.build {
+        (build.output.clone(), build.flags.clone().unwrap_or(vec![]))
+    } else {
+        (manifest.package.name.trim().to_string(), vec![])
+    };
+
+    // final compilation
+
+    match manifest.package.r#type {
+        PackageType::Bin => {}
+        PackageType::Static => {}
+        PackageType::Dynamic => {}
+    }
 }
 
 pub fn cmd_run(args: cli::RunArgs, manifest: &Manifest, root: &Path) {
