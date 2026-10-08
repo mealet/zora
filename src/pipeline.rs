@@ -435,14 +435,13 @@ pub fn cmd_check(manifest: &Manifest, root: &Path, avoid_execution: bool) {
     }
 }
 
-type OutputPath = PathBuf;
-type BuildName = String;
+type RunArtifact = PathBuf;
 
 pub fn cmd_build(
     args: cli::BuildArgs,
     manifest: &Manifest,
     root: &Path,
-) -> (OutputPath, BuildName) {
+) -> Option<RunArtifact> {
     cmd_check(manifest, root, true);
 
     // basic dist directory
@@ -511,7 +510,7 @@ pub fn cmd_build(
                 std::process::exit(1);
             }
 
-            (output_dir, output_name)
+            Some(output_path)
         }
         PackageType::Static => {
             let triple = args.target.as_deref();
@@ -542,7 +541,7 @@ pub fn cmd_build(
 
                 cli::println_info("Emitted", format!("{}", output_path.to_string_lossy()));
 
-                return (output_dir, output_name);
+                return None;
             }
 
             compiler_cmd
@@ -585,7 +584,7 @@ pub fn cmd_build(
                 format!("static library: `{}`", archived.to_string_lossy()),
             );
 
-            (output_dir, output_name)
+            None
         }
         PackageType::Dynamic => {
             cli::exit_with_error("Dynamic library compilation is not implemented")
@@ -598,7 +597,7 @@ pub fn cmd_run(args: cli::RunArgs, manifest: &Manifest, root: &Path) {
         cli::exit_with_error("Run command isn't supported for library packages");
     }
 
-    let (output_dir, build_name) = cmd_build(
+    let Some(run_artifact) = cmd_build(
         cli::BuildArgs {
             mode: args.mode,
             target: None,
@@ -606,10 +605,11 @@ pub fn cmd_run(args: cli::RunArgs, manifest: &Manifest, root: &Path) {
         },
         manifest,
         root,
-    );
+    ) else {
+        cli::exit_with_error("No build artifact provided to run");
+    };
 
-    let cmd = Command::new(format!("./{build_name}"))
-        .current_dir(output_dir)
+    let cmd = Command::new(run_artifact)
         .status()
         .unwrap_or_else(|err| cli::exit_with_error(format!("Build execution failed: {}", err)));
 
