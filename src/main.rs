@@ -3,6 +3,7 @@
 use clap::{CommandFactory, Parser};
 
 mod cli;
+mod link;
 mod lockfile;
 mod manifest;
 mod pipeline;
