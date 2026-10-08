@@ -10,7 +10,7 @@ use semver::{Version, VersionReq};
 
 use crate::{
     cli,
-    lockfile::{self, LockPackage, Lockfile},
+    lockfile::{self, LockPackage, LockValidateError, Lockfile},
     manifest::{self, Manifest},
 };
 
@@ -107,7 +107,9 @@ pub fn load_optional_lockfile(root: &Path) -> Option<Lockfile> {
 
 fn ensure_lockfile(root: &Path, manifest: &Manifest) -> Lockfile {
     if let Some(mut lockfile) = load_optional_lockfile(root) {
-        if lockfile.sync_root(manifest) {
+        let synced = lockfile.sync_root(manifest);
+
+        if synced {
             cli::println_info(
                 "Updating",
                 format!("lockfile `{}` (sync actions)", lockfile::LOCKFILE_CONFIG),
@@ -132,6 +134,8 @@ fn ensure_lockfile(root: &Path, manifest: &Manifest) -> Lockfile {
 
         return lockfile;
     }
+
+    // Lock not found, creating new
 
     cli::println_info(
         "Creating",
@@ -303,26 +307,33 @@ pub fn cmd_check(manifest: &Manifest, root: &Path) {
 
     let lockfile = ensure_lockfile(root, manifest);
 
-    for package in lockfile.package.iter() {
-        let version_requirement = &package.zeen;
+    if let Err(err) = lockfile.validate(manifest, &ZEEN_VERSION.0) {
+        match err {
+            LockValidateError::UnsupportedVersion(used) => {
+                cli::println_error(format!(
+                    "`{}` supported version is '{}', but found {}",
+                    lockfile::LOCKFILE_CONFIG,
+                    lockfile::SUPPORTED_LOCK_VERSION,
+                    used
+                ));
 
-        if !version_requirement.matches(&ZEEN_VERSION.0) {
-            cli::exit_with_error(format!(
-                "Package '{}': requires Zeen '{}', but current is '{}'",
-                package.name, version_requirement, ZEEN_VERSION.0
-            ));
+                cli::exit_with_error("Consider removing lockfile and running 'zora check'");
+            }
+
+            LockValidateError::ZeenMismatch {
+                package,
+                required,
+                installed,
+            } => cli::exit_with_error(format!(
+                "Package `{}` requires Zeen '{}', but found '{}'",
+                package, required, installed
+            )),
+
+            _ => todo!(),
         }
-    }
 
-    if lockfile.version != lockfile::SUPPORTED_LOCK_VERSION {
-        cli::println_error(format!(
-            "`{}` version is not supported. Current supported: {}",
-            lockfile::LOCKFILE_CONFIG,
-            lockfile::SUPPORTED_LOCK_VERSION
-        ));
-        cli::exit_with_error(
-            "Consider removing lock manifest and run `zora check` to re-initialize it.",
-        );
+        // In case if I forget to exit process on error
+        unreachable!()
     }
 
     // Paths checks

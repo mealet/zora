@@ -116,6 +116,52 @@ impl Lockfile {
 
         changed
     }
+
+    pub fn validate(
+        &self,
+        manifest: &Manifest,
+        zeen_installed: &Version,
+    ) -> Result<(), LockValidateError> {
+        if self.version != SUPPORTED_LOCK_VERSION {
+            return Err(LockValidateError::UnsupportedVersion(self.version));
+        }
+
+        for package in self.package.iter() {
+            let version_requirement = &package.zeen;
+
+            if !version_requirement.matches(zeen_installed) {
+                return Err(LockValidateError::ZeenMismatch {
+                    package: package.name.clone(),
+                    required: package.zeen.clone(),
+                    installed: zeen_installed.clone(),
+                });
+            }
+        }
+
+        Ok(())
+    }
+}
+
+pub enum LockValidateError {
+    UnsupportedVersion(u32),
+    EmptyGraph,
+    RootMismatch,
+    RootHasSource,
+    ZeenMismatch {
+        package: String,
+        required: VersionReq,
+        installed: Version,
+    },
+    MissingNode {
+        wanted_by: String,
+        package: String,
+        rev: String,
+    },
+    DuplicateNode {
+        package: String,
+        rev: String,
+    },
+    IncompleteNode(String),
 }
 
 impl LockPackage {
