@@ -552,8 +552,20 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) {
                 std::process::exit(1);
             }
 
+            let obj_file = output_dir.join(format!(
+                "{output_name}.{}",
+                if triple.unwrap_or_default().contains("msvc")
+                    || triple.unwrap_or_default().contains("windows")
+                    || (triple.is_none() && cfg!(target_os = "windows"))
+                {
+                    "obj"
+                } else {
+                    "o"
+                }
+            ));
+
             let archived = link::archive_static(
-                std::slice::from_ref(&output_dir.join(format!("{output_name}.o"))),
+                std::slice::from_ref(&obj_file),
                 &output_dir.join(link::static_library_name(&output_name, triple)),
                 triple,
             );
