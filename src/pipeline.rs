@@ -441,11 +441,12 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) {
     fs::create_dir_all(root.join("dist")).unwrap_or_else(|err| {
         cli::exit_with_error(format!("Unable to create `dist` directory: {err}"));
     });
+    let dist_dir = root.join("dist");
 
     // output target directory (for host its still dist)
     let (target_dir, needs_create) = match args.target {
-        Some(target) => (root.join(target), true),
-        None => (root.to_path_buf(), false),
+        Some(target) => (dist_dir.join(target), true),
+        None => (dist_dir.to_path_buf(), false),
     };
 
     if needs_create {
@@ -476,11 +477,26 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) {
     } else {
         (manifest.package.name.trim().to_string(), vec![])
     };
+    let output_path = output_dir.join(output_name);
+
+    let src_dir = root.join(SOURCE_DIRECTORY);
+    let mut compiler_cmd = compiler_command(&src_dir);
 
     // final compilation
 
     match manifest.package.r#type {
-        PackageType::Bin => {}
+        PackageType::Bin => {
+            compiler_cmd
+                .arg(TYPE_BIN_ENTRY)
+                .arg(output_path)
+                .args(compiler_flags);
+
+            let success = compiler_cmd.status().map(|x| x.success()).unwrap_or(false);
+
+            if !success {
+                std::process::exit(1);
+            }
+        }
         PackageType::Static => {}
         PackageType::Dynamic => {}
     }
