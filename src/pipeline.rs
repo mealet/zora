@@ -10,6 +10,7 @@ use semver::{Version, VersionReq};
 
 use crate::{
     cli::{self, CompilationMode},
+    link,
     lockfile::{self, LockPackage, LockValidateError, Lockfile},
     manifest::{self, Manifest, PackageType},
 };
@@ -36,7 +37,7 @@ pub fn add_int(a: i32, b: i32) i32 {
 
 "#;
 
-const LIB_TYPE_DEFAULT: manifest::PackageType = manifest::PackageType::Dynamic;
+const LIB_TYPE_DEFAULT: manifest::PackageType = manifest::PackageType::Static;
 const INIT_VERSION_DEFAULT: &str = "0.0.0";
 
 static ZEEN_VERSION: LazyLock<(Version, VersionReq)> = LazyLock::new(verify_zeen_installed);
@@ -477,17 +478,12 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) {
     } else {
         (manifest.package.name.trim().to_string(), vec![])
     };
-    let output_path = output_dir.join(output_name);
+    let output_path = output_dir.join(&output_name);
 
     let src_dir = root.join(SOURCE_DIRECTORY);
     let mut compiler_cmd = compiler_command(&src_dir);
-    let mut emit_only = false;
 
     // final compilation
-
-    if let Some(emit) = args.emit {
-        compiler_cmd.arg("--emit").arg(emit.to_string());
-    }
 
     match manifest.package.r#type {
         PackageType::Bin => {
@@ -509,7 +505,63 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) {
             }
         }
         PackageType::Static => {
-            cli::exit_with_error("Static library compilation is not implemented")
+            let triple = args.target.as_deref();
+
+            if let Some(emit) = args.emit {
+                let mut emit_command = compiler_command(&src_dir);
+
+                emit_command
+                    .arg(TYPE_LIB_ENTRY)
+                    .arg(&output_path)
+                    .arg("--mode")
+                    .arg("Release")
+                    .arg("--emit")
+                    .arg(emit.to_string());
+
+                if let Some(triple) = triple {
+                    emit_command.arg("--target").arg(triple);
+                }
+
+                let success = emit_command
+                    .status()
+                    .map(|status| status.success())
+                    .unwrap_or(false);
+
+                if !success {
+                    std::process::exit(1);
+                }
+
+                cli::println_info("Emitted", format!("{}", output_path.to_string_lossy()));
+                return;
+            }
+
+            compiler_cmd
+                .arg(TYPE_LIB_ENTRY)
+                .arg(&output_path)
+                .args(compiler_flags)
+                .args(["--mode", "Release"])
+                .args(["--emit", "OBJ"]);
+
+            if let Some(ref target) = args.target {
+                compiler_cmd.arg("--target").arg(target);
+            }
+
+            let success = compiler_cmd.status().map(|x| x.success()).unwrap_or(false);
+
+            if !success {
+                std::process::exit(1);
+            }
+
+            let archived = link::archive_static(
+                std::slice::from_ref(&output_dir.join(format!("{output_name}.o"))),
+                &output_dir.join(link::static_library_name(&output_name, triple)),
+                triple,
+            );
+
+            cli::println_info(
+                "Archived",
+                format!("static library: `{}`", archived.to_string_lossy()),
+            );
         }
         PackageType::Dynamic => {
             cli::exit_with_error("Dynamic library compilation is not implemented")

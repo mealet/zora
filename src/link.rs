@@ -4,7 +4,15 @@ use std::{
     process::Command,
 };
 
-pub fn archive_static(objects: &[PathBuf], output: &Path, target_triple: Option<&str>) {
+pub fn static_library_name(base_name: &str, target_triple: Option<&str>) -> String {
+    if target_triple.is_some_and(|triple| triple.contains("msvc")) {
+        format!("{base_name}.lib")
+    } else {
+        format!("lib{base_name}.a")
+    }
+}
+
+pub fn archive_static(objects: &[PathBuf], output: &Path, target_triple: Option<&str>) -> PathBuf {
     if objects.is_empty() {
         cli::exit_with_error("No object files to archive");
     }
@@ -13,10 +21,11 @@ pub fn archive_static(objects: &[PathBuf], output: &Path, target_triple: Option<
 
     if triple.contains("msvc") {
         archive_msvc(objects, output);
-        return;
+    } else {
+        archive_unix(objects, output);
     }
 
-    archive_unix(objects, output);
+    output.to_path_buf()
 }
 
 fn archive_unix(objects: &[PathBuf], output: &Path) {
