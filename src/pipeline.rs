@@ -58,17 +58,14 @@ pub fn verify_zeen_installed() -> (Version, VersionReq) {
             let caps = re.captures(&stdout);
 
             if let Some(caps) = caps {
-                let ver = Version::parse(&caps[1]).unwrap_or_else(
-                    |err| {
-                        cli::exit_with_error(format!("Error parsing Zeen version: {}", err));
-                    },
-                );
+                let ver = Version::parse(&caps[1]).unwrap_or_else(|err| {
+                    cli::exit_with_error(format!("Error parsing Zeen version: {}", err));
+                });
 
-                let ver_req = VersionReq::parse(format!("^{}", &caps[1]).as_str()).unwrap_or_else(
-                    |err| {
+                let ver_req =
+                    VersionReq::parse(format!("^{}", &caps[1]).as_str()).unwrap_or_else(|err| {
                         cli::exit_with_error(format!("Error parsing Zeen version: {}", err));
-                    },
-                );
+                    });
 
                 return (ver, ver_req);
             }
@@ -111,7 +108,10 @@ pub fn load_optional_lockfile(root: &Path) -> Option<Lockfile> {
 fn ensure_lockfile(root: &Path, manifest: &Manifest) -> Lockfile {
     if let Some(mut lockfile) = load_optional_lockfile(root) {
         if lockfile.sync_root(manifest) {
-            cli::println_info("Updating", format!("lockfile `{}` (sync actions)", lockfile::LOCKFILE_CONFIG));
+            cli::println_info(
+                "Updating",
+                format!("lockfile `{}` (sync actions)", lockfile::LOCKFILE_CONFIG),
+            );
 
             let lockfile_content = toml::to_string_pretty(&lockfile).unwrap_or_else(|err| {
                 cli::exit_with_error(format!("Unable to serialize toml lockfile: {}", err))
@@ -133,7 +133,10 @@ fn ensure_lockfile(root: &Path, manifest: &Manifest) -> Lockfile {
         return lockfile;
     }
 
-    cli::println_info("Creating", format!("new lockfile `{}`", lockfile::LOCKFILE_CONFIG));
+    cli::println_info(
+        "Creating",
+        format!("new lockfile `{}`", lockfile::LOCKFILE_CONFIG),
+    );
 
     let fresh_lockfile = Lockfile::fresh(manifest);
     let lockfile_content = toml::to_string_pretty(&fresh_lockfile).unwrap_or_else(|err| {
@@ -304,8 +307,22 @@ pub fn cmd_check(manifest: &Manifest, root: &Path) {
         let version_requirement = &package.zeen;
 
         if !version_requirement.matches(&ZEEN_VERSION.0) {
-            cli::exit_with_error(format!("Package '{}': requires Zeen '{}', but current is '{}'", package.name, version_requirement, ZEEN_VERSION.0));
+            cli::exit_with_error(format!(
+                "Package '{}': requires Zeen '{}', but current is '{}'",
+                package.name, version_requirement, ZEEN_VERSION.0
+            ));
         }
+    }
+
+    if lockfile.version != lockfile::SUPPORTED_LOCK_VERSION {
+        cli::println_error(format!(
+            "`{}` version is not supported. Current supported: {}",
+            lockfile::LOCKFILE_CONFIG,
+            lockfile::SUPPORTED_LOCK_VERSION
+        ));
+        cli::exit_with_error(
+            "Consider removing lock manifest and run `zora check` to re-initialize it.",
+        );
     }
 
     // Paths checks
