@@ -32,7 +32,9 @@ fn main() {
         cli::Commands::Init(_) | cli::Commands::New(_) => unreachable!(),
 
         cli::Commands::Check => pipeline::cmd_check(&manifest, &root, false),
-        cli::Commands::Build(args) => pipeline::cmd_build(args, &manifest, &root),
+        cli::Commands::Build(args) => {
+            let _ = pipeline::cmd_build(args, &manifest, &root);
+        }
         cli::Commands::Run(args) => pipeline::cmd_run(args, &manifest, &root),
         cli::Commands::Add(args) => pipeline::cmd_add(args, &manifest, &root),
         cli::Commands::Remove(args) => pipeline::cmd_remove(args, &manifest, &root),

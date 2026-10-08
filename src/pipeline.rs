@@ -435,7 +435,14 @@ pub fn cmd_check(manifest: &Manifest, root: &Path, avoid_execution: bool) {
     }
 }
 
-pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) {
+type OutputPath = PathBuf;
+type BuildName = String;
+
+pub fn cmd_build(
+    args: cli::BuildArgs,
+    manifest: &Manifest,
+    root: &Path,
+) -> (OutputPath, BuildName) {
     cmd_check(manifest, root, true);
 
     // basic dist directory
@@ -489,7 +496,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) {
         PackageType::Bin => {
             compiler_cmd
                 .arg(TYPE_BIN_ENTRY)
-                .arg(output_path)
+                .arg(&output_path)
                 .args(compiler_flags);
 
             if let Some(ref target) = args.target {
@@ -503,6 +510,8 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) {
             if !success {
                 std::process::exit(1);
             }
+
+            (output_dir, output_name)
         }
         PackageType::Static => {
             let triple = args.target.as_deref();
@@ -532,7 +541,8 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) {
                 }
 
                 cli::println_info("Emitted", format!("{}", output_path.to_string_lossy()));
-                return;
+
+                return (output_dir, output_name);
             }
 
             compiler_cmd
@@ -574,6 +584,8 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) {
                 "Archived",
                 format!("static library: `{}`", archived.to_string_lossy()),
             );
+
+            (output_dir, output_name)
         }
         PackageType::Dynamic => {
             cli::exit_with_error("Dynamic library compilation is not implemented")
@@ -582,7 +594,26 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) {
 }
 
 pub fn cmd_run(args: cli::RunArgs, manifest: &Manifest, root: &Path) {
-    todo!()
+    if manifest.package.r#type != PackageType::Bin {
+        cli::exit_with_error("Run command isn't supported for library packages");
+    }
+
+    let (output_dir, build_name) = cmd_build(
+        cli::BuildArgs {
+            mode: args.mode,
+            target: None,
+            emit: None,
+        },
+        manifest,
+        root,
+    );
+
+    let cmd = Command::new(format!("./{build_name}"))
+        .current_dir(output_dir)
+        .status()
+        .unwrap_or_else(|err| cli::exit_with_error(format!("Build execution failed: {}", err)));
+
+    std::process::exit(cmd.code().unwrap_or(1));
 }
 
 pub fn cmd_add(args: cli::AddArgs, manifest: &Manifest, root: &Path) {

@@ -23,7 +23,7 @@ pub struct Package {
     pub license: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum PackageType {
     #[serde(rename = "bin")]
     Bin,
