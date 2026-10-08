@@ -484,7 +484,10 @@ pub fn cmd_build(
     } else {
         (manifest.package.name.trim().to_string(), vec![])
     };
-    let output_path = output_dir.join(&output_name);
+    let output_path = output_dir.join(match manifest.package.r#type {
+        PackageType::Bin if cfg!(target_os = "windows") => format!("{output_name}.exe"),
+        _ => output_name.clone(),
+    });
 
     let src_dir = root.join(SOURCE_DIRECTORY);
     let mut compiler_cmd = compiler_command(&src_dir);
