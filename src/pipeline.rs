@@ -444,7 +444,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) {
     let dist_dir = root.join("dist");
 
     // output target directory (for host its still dist)
-    let (target_dir, needs_create) = match args.target {
+    let (target_dir, needs_create) = match &args.target {
         Some(target) => (dist_dir.join(target), true),
         None => (dist_dir.to_path_buf(), false),
     };
@@ -481,8 +481,13 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) {
 
     let src_dir = root.join(SOURCE_DIRECTORY);
     let mut compiler_cmd = compiler_command(&src_dir);
+    let mut emit_only = false;
 
     // final compilation
+
+    if let Some(emit) = args.emit {
+        compiler_cmd.arg("--emit").arg(emit.to_string());
+    }
 
     match manifest.package.r#type {
         PackageType::Bin => {
@@ -491,14 +496,24 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) {
                 .arg(output_path)
                 .args(compiler_flags);
 
+            if let Some(ref target) = args.target {
+                compiler_cmd.arg("--target").arg(target);
+            }
+
+            compiler_cmd.arg("--mode").arg(args.mode.to_string());
+
             let success = compiler_cmd.status().map(|x| x.success()).unwrap_or(false);
 
             if !success {
                 std::process::exit(1);
             }
         }
-        PackageType::Static => {}
-        PackageType::Dynamic => {}
+        PackageType::Static => {
+            cli::exit_with_error("Static library compilation is not implemented")
+        }
+        PackageType::Dynamic => {
+            cli::exit_with_error("Dynamic library compilation is not implemented")
+        }
     }
 }
 

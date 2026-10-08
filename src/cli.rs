@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use colored::Colorize;
+use serde::Serialize;
 
 /// Main CLI parser struct
 #[derive(Debug, Parser)]
@@ -87,6 +88,19 @@ pub enum CompilationMode {
     Release,
 }
 
+impl std::fmt::Display for CompilationMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Debug => "Debug",
+                Self::Release => "Release",
+            }
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, ValueEnum)]
 pub enum CompilationOutput {
     #[value(name = "BIN")]
@@ -98,6 +112,21 @@ pub enum CompilationOutput {
     EmitIR,
     #[value(name = "MIR")]
     EmitMIR,
+}
+
+impl std::fmt::Display for CompilationOutput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Binary => "BIN",
+                Self::Object => "OBJ",
+                Self::EmitIR => "IR",
+                Self::EmitMIR => "MIR",
+            }
+        )
+    }
 }
 
 /// `zora run` args
