@@ -307,7 +307,7 @@ pub fn cmd_check(manifest: &Manifest, root: &Path) {
 
     let lockfile = ensure_lockfile(root, manifest);
 
-    if let Err(err) = lockfile.validate(manifest, &ZEEN_VERSION.0) {
+    if let Err(err) = lockfile.validate(&ZEEN_VERSION.0) {
         match err {
             LockValidateError::UnsupportedVersion(used) => {
                 cli::println_error(format!(
@@ -329,7 +329,41 @@ pub fn cmd_check(manifest: &Manifest, root: &Path) {
                 package, required, installed
             )),
 
-            _ => todo!(),
+            LockValidateError::EmptyGraph => {
+                cli::println_error("Root graph in lockfile not found.");
+                cli::exit_with_error("Consider removing file and running 'zora check'");
+            }
+
+            LockValidateError::RootHasSource => {
+                cli::println_error("Root graph cannot have source (repository, branch, commit).");
+                cli::exit_with_error("Consider removing file and running 'zora check'");
+            }
+
+            LockValidateError::MissingNode {
+                wanted_by,
+                package,
+                rev,
+            } => {
+                cli::println_error(format!(
+                    "Package `{wanted_by}` wanted `{package}` dependency, but it's missing."
+                ));
+                cli::println_error(format!("Missing graph: `{package}@{rev}`"));
+                cli::exit_with_error("Consider removing file and running 'zora check'");
+            }
+
+            LockValidateError::DuplicateNode { package, rev } => {
+                cli::println_error(format!(
+                    "Found duplicate node of `{package}` package (`{package}@{rev}`)."
+                ));
+                cli::exit_with_error("Consider removing file and running 'zora check'");
+            }
+
+            LockValidateError::IncompleteNode(node) => {
+                cli::println_error(format!(
+                    "Lock node `{node}` is incomplete (repository/branch/commit corrupted)."
+                ));
+                cli::exit_with_error("Consider removing file and running 'zora check'");
+            }
         }
 
         // In case if I forget to exit process on error

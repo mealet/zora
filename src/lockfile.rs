@@ -1,4 +1,4 @@
-use std::{fs, path::Path};
+use std::{collections::HashSet, fs, path::Path};
 
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -31,7 +31,8 @@ pub struct LockPackage {
     pub commit: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+/// Dependency structure from format "name@rev"
+#[derive(Debug, Serialize, Hash, Eq, PartialEq)]
 pub struct LockDependency {
     pub package: String,
     pub rev: String,
@@ -117,16 +118,26 @@ impl Lockfile {
         changed
     }
 
-    pub fn validate(
-        &self,
-        manifest: &Manifest,
-        zeen_installed: &Version,
-    ) -> Result<(), LockValidateError> {
+    pub fn validate(&self, zeen_installed: &Version) -> Result<(), LockValidateError> {
         if self.version != SUPPORTED_LOCK_VERSION {
             return Err(LockValidateError::UnsupportedVersion(self.version));
         }
 
-        for package in self.package.iter() {
+        // this probably shouldn't happen, but I'll keep this error
+        let Some(root_graph) = self.package.first() else {
+            return Err(LockValidateError::EmptyGraph);
+        };
+
+        if root_graph.repository.is_some()
+            || root_graph.branch.is_some()
+            || root_graph.commit.is_some()
+        {
+            return Err(LockValidateError::RootHasSource);
+        }
+
+        let mut cached_deps: HashSet<LockDependency> = HashSet::new();
+
+        for (idx, package) in self.package.iter().enumerate() {
             let version_requirement = &package.zeen;
 
             if !version_requirement.matches(zeen_installed) {
@@ -135,6 +146,44 @@ impl Lockfile {
                     required: package.zeen.clone(),
                     installed: zeen_installed.clone(),
                 });
+            }
+
+            if idx != 0
+                && (package
+                    .repository
+                    .as_ref()
+                    .map(|x| x.to_string())
+                    .unwrap_or_default()
+                    .is_empty()
+                    || package.branch.clone().unwrap_or_default().is_empty()
+                    || package.commit.clone().unwrap_or_default().is_empty())
+            {
+                return Err(LockValidateError::IncompleteNode(package.name.clone()));
+            }
+
+            let dependency_format = LockDependency {
+                package: package.name.clone(),
+                rev: package.commit.clone().unwrap_or("HEAD".into()),
+            };
+
+            if !cached_deps.insert(dependency_format) {
+                return Err(LockValidateError::DuplicateNode {
+                    package: package.name.clone(),
+                    rev: package.commit.clone().unwrap_or("HEAD".into()),
+                });
+            }
+        }
+
+        // dependencies verifier
+        for package in self.package.iter() {
+            for dep in package.dependencies.iter() {
+                if !cached_deps.contains(dep) {
+                    return Err(LockValidateError::MissingNode {
+                        wanted_by: package.name.clone(),
+                        package: dep.package.clone(),
+                        rev: dep.rev.clone(),
+                    });
+                }
             }
         }
 
@@ -145,7 +194,6 @@ impl Lockfile {
 pub enum LockValidateError {
     UnsupportedVersion(u32),
     EmptyGraph,
-    RootMismatch,
     RootHasSource,
     ZeenMismatch {
         package: String,
@@ -171,7 +219,7 @@ impl LockPackage {
             version: manifest.package.version.clone(),
             zeen: manifest.package.zeen.clone(),
             dependencies: vec![],
-            repository: manifest.package.repository.clone(),
+            repository: None,
             branch: None,
             commit: None,
         }
