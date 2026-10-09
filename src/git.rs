@@ -44,7 +44,7 @@ pub fn db_path(url: &Url) -> PathBuf {
     let url_hash = url_hash(url);
     let db_url = zora_db().join(url_hash);
 
-    ensure_dir(&db_url);
+    ensure_parent_dirs(&db_url);
 
     db_url
 }
@@ -53,7 +53,7 @@ pub fn checkout_path(url: &Url, commit: impl AsRef<str>) -> PathBuf {
     let url_hash = url_hash(url);
     let checkout_path = zora_checkouts().join(url_hash).join(commit.as_ref());
 
-    ensure_dir(&checkout_path);
+    ensure_parent_dirs(&checkout_path);
 
     checkout_path
 }
@@ -113,6 +113,61 @@ pub fn probe_branch(url: &Url, preferred: Option<impl AsRef<str>>) -> String {
     };
 
     branch.to_string()
+}
+
+pub fn ensure_bare(url: &Url) -> PathBuf {
+    let db = db_path(url);
+    let head = fs::read_to_string(db.join("HEAD"))
+        .map(|content| content.starts_with("ref"))
+        .ok();
+
+    if let Some(head) = head
+        && head
+    {
+        let fetch_output = Command::new("git")
+            .arg("fetch")
+            .arg("--quiet")
+            .current_dir(&db)
+            .output();
+
+        return match fetch_output {
+            Ok(out) => {
+                if !out.status.success() {
+                    cli::exit_with_error(format!(
+                        "Git fetch returned an error:\n{}",
+                        String::from_utf8_lossy(&out.stderr)
+                    ));
+                }
+
+                db
+            }
+
+            Err(err) => cli::exit_with_error(format!("Error appeared on `git` bare fetch exec: {err}")),
+        };
+    }
+
+    ensure_dir(&db);
+
+    let output = Command::new("git")
+        .arg("clone")
+        .args(["--bare", "--quiet"])
+        .arg(url.as_str())
+        .arg(&db)
+        .output();
+
+    match output {
+        Ok(out) => {
+            if !out.status.success() {
+                cli::exit_with_error(format!(
+                    "Bare git clone returned an error:\n{}",
+                    String::from_utf8_lossy(&out.stderr)
+                ));
+            }
+
+            db
+        }
+        Err(err) => cli::exit_with_error(format!("Error appeared on `git` bare clone exec: {err}")),
+    }
 }
 
 // ==== helpers ====
