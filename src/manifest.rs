@@ -44,7 +44,7 @@ pub struct Build {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Dependency {
-    Short(String),
+    Short(Url),
     Detailed { git: Url, branch: Option<String> },
 }
 
