@@ -5,6 +5,7 @@ use crate::cli;
 use std::{
     fs,
     path::{Path, PathBuf},
+    process::Command,
 };
 
 // ==== dirs ====
@@ -58,6 +59,30 @@ pub fn checkout_path(url: &Url, commit: impl AsRef<str>) -> PathBuf {
 }
 
 // ==== git ====
+
+pub fn ls_remote_branches(url: &Url) -> Vec<String> {
+    let output = Command::new("git")
+        .args(["ls-remote", "--heads", url.as_str()])
+        .output()
+        .unwrap_or_else(|err| cli::exit_with_error(format!("Git execution error: {err}")));
+
+    if !output.status.success() {
+        cli::exit_with_error(format!(
+            "Url `{url}` returned error:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    stdout
+        .lines()
+        .filter_map(|line| {
+            let (_, ref_path) = line.split_once("\t").unwrap_or(("", ""));
+            ref_path.strip_prefix("refs/heads/").map(String::from)
+        })
+        .collect()
+}
 
 // ==== helpers ====
 
