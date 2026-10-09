@@ -28,7 +28,7 @@ fn zora_db() -> PathBuf {
 }
 
 fn zora_checkouts() -> PathBuf {
-    zora_home().join("checkouts")
+    zora_git().join("checkouts")
 }
 
 pub fn url_hash(url: &Url) -> String {
@@ -82,6 +82,37 @@ pub fn ls_remote_branches(url: &Url) -> Vec<String> {
             ref_path.strip_prefix("refs/heads/").map(String::from)
         })
         .collect()
+}
+
+pub fn probe_branch(url: &Url, preferred: Option<impl AsRef<str>>) -> String {
+    const MAIN_BRANCHES: &[&str] = &["main", "master"];
+
+    let remote_branches = ls_remote_branches(url);
+
+    if let Some(preferred) = preferred {
+        if !remote_branches.contains(&preferred.as_ref().into()) {
+            cli::exit_with_error(format!(
+                "Url `{url}` doesn't have \"{}\" branch. Available: {}",
+                preferred.as_ref(),
+                remote_branches.join(", ")
+            ));
+        }
+
+        return preferred.as_ref().to_owned();
+    }
+
+    let available_mains = MAIN_BRANCHES
+        .iter()
+        .filter(|&&branch| remote_branches.contains(&branch.to_string()))
+        .collect::<Vec<_>>();
+
+    let Some(&&branch) = available_mains.first() else {
+        cli::exit_with_error(format!(
+            "Url `{url}`, no main branch found, please specify it in manifest"
+        ));
+    };
+
+    branch.to_string()
 }
 
 // ==== helpers ====
