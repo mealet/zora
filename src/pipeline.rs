@@ -437,11 +437,7 @@ pub fn cmd_check(manifest: &Manifest, root: &Path, avoid_execution: bool) {
 
 type RunArtifact = PathBuf;
 
-pub fn cmd_build(
-    args: cli::BuildArgs,
-    manifest: &Manifest,
-    root: &Path,
-) -> Option<RunArtifact> {
+pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Option<RunArtifact> {
     cmd_check(manifest, root, true);
 
     // basic dist directory
@@ -590,7 +586,78 @@ pub fn cmd_build(
             None
         }
         PackageType::Dynamic => {
-            cli::exit_with_error("Dynamic library compilation is not implemented")
+            let triple = args.target.as_deref();
+
+            if let Some(emit) = args.emit {
+                let mut emit_command = compiler_command(&src_dir);
+
+                emit_command
+                    .arg(TYPE_LIB_ENTRY)
+                    .arg(&output_path)
+                    .arg("--mode")
+                    .arg("Release")
+                    .arg("--emit")
+                    .arg(emit.to_string());
+
+                if let Some(triple) = triple {
+                    emit_command.arg("--target").arg(triple);
+                }
+
+                let success = emit_command
+                    .status()
+                    .map(|status| status.success())
+                    .unwrap_or(false);
+
+                if !success {
+                    std::process::exit(1);
+                }
+
+                cli::println_info("Emitted", format!("{}", output_path.to_string_lossy()));
+
+                return None;
+            }
+
+            compiler_cmd
+                .arg(TYPE_LIB_ENTRY)
+                .arg(&output_path)
+                .args(compiler_flags)
+                .args(["--mode", "Release"])
+                .args(["--emit", "OBJ"]);
+
+            if let Some(ref target) = args.target {
+                compiler_cmd.arg("--target").arg(target);
+            }
+
+            let success = compiler_cmd.status().map(|x| x.success()).unwrap_or(false);
+
+            if !success {
+                std::process::exit(1);
+            }
+
+            let obj_file = output_dir.join(format!(
+                "{output_name}.{}",
+                if triple.unwrap_or_default().contains("msvc")
+                    || triple.unwrap_or_default().contains("windows")
+                    || (triple.is_none() && cfg!(target_os = "windows"))
+                {
+                    "obj"
+                } else {
+                    "o"
+                }
+            ));
+
+            let linked = link::link_dynamic(
+                std::slice::from_ref(&obj_file),
+                &output_dir.join(link::dynamic_library_name(&output_name, triple)),
+                triple,
+            );
+
+            cli::println_info(
+                "Linked",
+                format!("dynamic library: `{}`", linked.to_string_lossy()),
+            );
+
+            None
         }
     }
 }
