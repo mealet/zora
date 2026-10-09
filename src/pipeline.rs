@@ -47,8 +47,21 @@ pub fn disable_color() {
     NO_COLOR.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 
-/// Verify that Zeen compiler is installed
+/// Verify that Zeen compiler and git is installed
 pub fn verify_zeen_installed() -> (Version, VersionReq) {
+    // firstly git, zeen only after
+    {
+        let git_cmd = Command::new("git")
+            .arg("--version")
+            .output()
+            .map(|x| x.status.success())
+            .unwrap_or(false);
+
+        if !git_cmd {
+            cli::exit_with_error("No `git` installed found");
+        }
+    }
+
     let output = Command::new(COMPILER_COMMAND)
         .arg("--version")
         .stdout(Stdio::piped())
