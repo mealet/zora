@@ -10,6 +10,9 @@ use serde::Serialize;
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
+
+    #[arg(long = "no-color", help = "Disable output coloring")]
+    pub no_color: bool,
 }
 
 /// Subcommand enum

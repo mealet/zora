@@ -11,6 +11,10 @@ mod pipeline;
 fn main() {
     let args = cli::Cli::parse();
 
+    if args.no_color {
+        colored::control::set_override(false);
+    }
+
     // initialization commands
     match &args.command {
         cli::Commands::Init(args) => {

@@ -3,7 +3,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    sync::LazyLock,
+    sync::{LazyLock, atomic::AtomicBool},
 };
 
 use semver::{Version, VersionReq};
@@ -41,6 +41,11 @@ const LIB_TYPE_DEFAULT: manifest::PackageType = manifest::PackageType::Static;
 const INIT_VERSION_DEFAULT: &str = "0.0.0";
 
 static ZEEN_VERSION: LazyLock<(Version, VersionReq)> = LazyLock::new(verify_zeen_installed);
+static NO_COLOR: AtomicBool = AtomicBool::new(false);
+
+pub fn disable_color() {
+    NO_COLOR.store(true, std::sync::atomic::Ordering::Relaxed);
+}
 
 /// Verify that Zeen compiler is installed
 pub fn verify_zeen_installed() -> (Version, VersionReq) {
@@ -163,6 +168,10 @@ fn ensure_lockfile(root: &Path, manifest: &Manifest) -> Lockfile {
 fn compiler_command(src_dir: &Path) -> Command {
     let mut command = Command::new(COMPILER_COMMAND);
     let _ = command.current_dir(src_dir);
+
+    if NO_COLOR.load(std::sync::atomic::Ordering::Relaxed) {
+        command.arg("--no-color");
+    }
 
     command
 }
