@@ -762,7 +762,7 @@ pub fn cmd_add(args: cli::AddArgs, manifest: &Manifest, root: &Path) {
         cli::exit_with_error(format!("Url parse error: {err}"));
     });
 
-    let probe = git::probe_branch(&url, None);
+    let probe = git::probe_branch(&url, args.branch.clone());
     let db = git::ensure_bare(&url);
     let sha = git::rev_parse(&db, &probe);
     let dest = git::checkout_path(&url, &sha);
@@ -815,9 +815,15 @@ pub fn cmd_add(args: cli::AddArgs, manifest: &Manifest, root: &Path) {
     }
 
     let mut new_manifest = manifest.clone();
-    new_manifest
-        .dependencies
-        .insert(dep_name.clone(), manifest::Dependency::Short(url));
+    let entry = match &args.branch {
+        Some(branch) => manifest::Dependency::Detailed {
+            git: url.clone(),
+            rev: Some(branch.clone()),
+        },
+        None => manifest::Dependency::Short(url.clone()),
+    };
+
+    new_manifest.dependencies.insert(dep_name.clone(), entry);
 
     let new_lockfile = resolve::resolve(&new_manifest);
 

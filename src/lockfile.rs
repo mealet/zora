@@ -155,7 +155,6 @@ impl Lockfile {
                     .map(|x| x.to_string())
                     .unwrap_or_default()
                     .is_empty()
-                    || package.branch.clone().unwrap_or_default().is_empty()
                     || package.commit.clone().unwrap_or_default().is_empty())
             {
                 return Err(LockValidateError::IncompleteNode(package.name.clone()));

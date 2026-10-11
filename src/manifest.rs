@@ -50,7 +50,7 @@ pub struct Build {
 #[serde(untagged)]
 pub enum Dependency {
     Short(Url),
-    Detailed { git: Url, branch: Option<String> },
+    Detailed { git: Url, rev: Option<String> },
 }
 
 // Load implementation

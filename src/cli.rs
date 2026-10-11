@@ -145,6 +145,9 @@ pub struct RunArgs {
 pub struct AddArgs {
     #[arg(value_name = "git-url")]
     pub url: String,
+
+    #[arg(long, value_name = "BRANCH")]
+    pub branch: Option<String>,
 }
 
 /// `zora remove` args

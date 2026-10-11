@@ -87,9 +87,13 @@ pub fn ls_remote_branches(url: &Url) -> Vec<String> {
 pub fn probe_branch(url: &Url, preferred: Option<String>) -> String {
     const MAIN_BRANCHES: &[&str] = &["main", "master"];
 
-    let remote_branches = ls_remote_branches(url);
-
     if let Some(preferred) = preferred {
+        if preferred.len() == 40 && preferred.chars().all(|ch| ch.is_ascii_hexdigit()) {
+            return preferred;
+        }
+
+        let remote_branches = ls_remote_branches(url);
+
         if !remote_branches.contains(&preferred) {
             cli::exit_with_error(format!(
                 "Url `{url}` doesn't have \"{}\" branch. Available: {}",
@@ -100,6 +104,8 @@ pub fn probe_branch(url: &Url, preferred: Option<String>) -> String {
 
         return preferred;
     }
+
+    let remote_branches = ls_remote_branches(url);
 
     let available_mains = MAIN_BRANCHES
         .iter()

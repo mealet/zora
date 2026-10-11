@@ -106,7 +106,7 @@ impl Resolver {
             zeen: dep_manifest.package.zeen,
             dependencies: refs,
             repository: Some(url.clone()),
-            branch: Some(probed),
+            branch: (probed != sha).then(|| probed.clone()),
             commit: Some(sha.clone()),
         };
 
@@ -120,6 +120,6 @@ impl Resolver {
 fn dependency_parts(dependency: &Dependency) -> (&url::Url, Option<String>) {
     match dependency {
         Dependency::Short(url) => (url, None),
-        Dependency::Detailed { git, branch } => (git, branch.clone()),
+        Dependency::Detailed { git, rev } => (git, rev.clone()),
     }
 }
