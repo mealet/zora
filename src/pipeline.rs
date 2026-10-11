@@ -219,7 +219,9 @@ fn apply_pkg_args(command: &mut Command, lockfile: &Lockfile) {
             cli::exit_with_error(format!("Lock node `{}` has no commit", package.name));
         };
 
-        let db = git::ensure_bare(repository);
+        let db = git::ensure_bare_local(repository);
+        git::ensure_commit(&db, repository, commit);
+
         let dest = git::checkout_path(repository, commit);
         git::ensure_checkout(&db, commit, &dest);
 

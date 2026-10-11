@@ -172,6 +172,77 @@ pub fn ensure_bare(url: &Url) -> PathBuf {
     }
 }
 
+pub fn ensure_bare_local(url: &Url) -> PathBuf {
+    let db = db_path(url);
+
+    let head = fs::read_to_string(db.join("HEAD"))
+        .map(|content| content.starts_with("ref"))
+        .ok();
+
+    if let Some(head) = head
+        && head
+    {
+        return db;
+    }
+
+    ensure_dir(&db);
+
+    let output = Command::new("git")
+        .arg("clone")
+        .args(["--bare", "--quiet"])
+        .arg(url.as_str())
+        .arg(&db)
+        .output();
+
+    match output {
+        Ok(out) => {
+            if !out.status.success() {
+                cli::exit_with_error(format!(
+                    "Bare git clone returned an error:\n{}",
+                    String::from_utf8_lossy(&out.stderr)
+                ));
+            }
+
+            db
+        }
+        Err(err) => cli::exit_with_error(format!("Error appeared on `git` bare clone exec: {err}")),
+    }
+}
+
+pub fn ensure_commit(db: &Path, url: &Url, commit: &str) {
+    let present = Command::new("git")
+        .arg(format!("--git-dir={}", db.to_string_lossy()))
+        .args(["cat-file", "-e", commit])
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false);
+
+    if present {
+        return;
+    }
+
+    let fetch = Command::new("git")
+        .arg(format!("--git-dir={}", db.to_string_lossy()))
+        .args(["fetch", "--quiet", "origin"])
+        .status();
+
+    match fetch {
+        Ok(status) if status.success() => {}
+        _ => cli::exit_with_error(format!("Commit `{commit}` not found in `{url}`")),
+    }
+
+    let present = Command::new("git")
+        .arg(format!("--git-dir={}", db.to_string_lossy()))
+        .args(["cat-file", "-e", commit])
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false);
+
+    if !present {
+        cli::exit_with_error(format!("Commit `{commit}` not found in `{url}`"));
+    }
+}
+
 pub fn rev_parse(db: &Path, rev: impl AsRef<str>) -> String {
     const GIT_HASH_LEN: usize = 40;
 
