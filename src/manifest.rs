@@ -1,6 +1,11 @@
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt::Display, fs, io, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    fs, io,
+    path::{Path, PathBuf},
+};
 use url::Url;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -89,7 +94,7 @@ impl Manifest {
         ))?;
 
         let manifest_content = fs::read_to_string(&manifest_config)?;
-        let manifest: Self = toml::from_str(&manifest_content)?;
+        let manifest_deserialized: Self = toml::from_str(&manifest_content)?;
 
         let root_path = manifest_config
             .parent()
@@ -99,7 +104,15 @@ impl Manifest {
             ))?
             .to_path_buf();
 
-        Ok((manifest, root_path))
+        Ok((manifest_deserialized, root_path))
+    }
+
+    pub fn load_from(dir: &Path) -> Result<Self, LoadError> {
+        let manifest_path = dir.join(MANIFEST_CONFIG);
+        let manifest_content = fs::read_to_string(manifest_path)?;
+        let manifest_deserialized: Self = toml::from_str(&manifest_content)?;
+
+        Ok(manifest_deserialized)
     }
 }
 
