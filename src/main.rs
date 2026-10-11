@@ -8,6 +8,7 @@ mod link;
 mod lockfile;
 mod manifest;
 mod pipeline;
+mod resolve;
 
 fn main() {
     let args = cli::Cli::parse();
