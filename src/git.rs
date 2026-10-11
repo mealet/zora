@@ -84,21 +84,21 @@ pub fn ls_remote_branches(url: &Url) -> Vec<String> {
         .collect()
 }
 
-pub fn probe_branch(url: &Url, preferred: Option<impl AsRef<str>>) -> String {
+pub fn probe_branch(url: &Url, preferred: Option<String>) -> String {
     const MAIN_BRANCHES: &[&str] = &["main", "master"];
 
     let remote_branches = ls_remote_branches(url);
 
     if let Some(preferred) = preferred {
-        if !remote_branches.contains(&preferred.as_ref().into()) {
+        if !remote_branches.contains(&preferred) {
             cli::exit_with_error(format!(
                 "Url `{url}` doesn't have \"{}\" branch. Available: {}",
-                preferred.as_ref(),
+                preferred,
                 remote_branches.join(", ")
             ));
         }
 
-        return preferred.as_ref().to_owned();
+        return preferred;
     }
 
     let available_mains = MAIN_BRANCHES
@@ -287,7 +287,9 @@ fn ensure_checkout_clone(db: &Path, commit: impl AsRef<str>, dest: &Path) {
         .arg(commit.as_ref())
         .output()
         .unwrap_or_else(|err| {
-            cli::exit_with_error(format!("Error appeared on `git` cloned checkout exec: {err}"))
+            cli::exit_with_error(format!(
+                "Error appeared on `git` cloned checkout exec: {err}"
+            ))
         });
 
     if !checkout_cmd.status.success() {
