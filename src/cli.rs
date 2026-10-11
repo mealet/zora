@@ -39,6 +39,9 @@ pub enum Commands {
     /// Remove dependency from the project
     Remove(RemoveArgs),
 
+    /// Clean build artifacts and caches
+    Clean(CleanArgs),
+
     /// Check project config and source
     Check,
 }
@@ -79,6 +82,13 @@ pub struct BuildArgs {
     /// `--emit`
     #[arg(long, help = "Emit options")]
     pub emit: Option<CompilationOutput>,
+}
+
+#[derive(Debug, Args)]
+pub struct CleanArgs {
+    /// Clean cached dependencies in global database (usually `~/.zora`)
+    #[arg(long)]
+    pub global: bool,
 }
 
 #[derive(Debug, Default, Clone, Copy, ValueEnum)]

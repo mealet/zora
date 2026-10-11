@@ -46,6 +46,7 @@ fn main() {
         cli::Commands::Run(args) => pipeline::cmd_run(args, &manifest, &root),
         cli::Commands::Add(args) => pipeline::cmd_add(args, &manifest, &root),
         cli::Commands::Remove(args) => pipeline::cmd_remove(args, &manifest, &root),
+        cli::Commands::Clean(args) => pipeline::cmd_clean(args, &root),
         cli::Commands::Test => pipeline::cmd_test(&manifest, &root),
     }
 }
