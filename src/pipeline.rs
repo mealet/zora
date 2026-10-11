@@ -360,7 +360,7 @@ pub fn cmd_new(args: &cli::NewArgs) {
 
 // ==== Manifest Required Commands ====
 
-pub fn cmd_check(manifest: &Manifest, root: &Path, avoid_execution: bool) {
+pub fn cmd_check(manifest: &Manifest, root: &Path, avoid_execution: bool) -> Lockfile {
     // Lockfile and Zeen version checks
 
     let lockfile = ensure_lockfile(root, manifest);
@@ -475,27 +475,32 @@ pub fn cmd_check(manifest: &Manifest, root: &Path, avoid_execution: bool) {
     // Zeen sources check (via `--check` flag)
 
     if avoid_execution {
-        return;
+        return lockfile;
     }
 
     let src_dir = root.join(SOURCE_DIRECTORY);
 
-    let check_command = compiler_command(&src_dir)
-        .arg(entry_file)
-        .arg("--check")
+    let mut check_command = compiler_command(&src_dir);
+    apply_pkg_args(&mut check_command, &lockfile);
+
+    check_command.arg(entry_file).arg("--check");
+
+    let check_success = check_command
         .status()
         .map(|status| status.success())
         .unwrap_or_else(|err| cli::exit_with_error(format!("Check command error: {}", err)));
 
-    if !check_command {
+    if !check_success {
         std::process::exit(1);
     }
+
+    lockfile
 }
 
 type RunArtifact = PathBuf;
 
 pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Option<RunArtifact> {
-    cmd_check(manifest, root, true);
+    let lockfile = cmd_check(manifest, root, true);
 
     // basic dist directory
     fs::create_dir_all(root.join("dist")).unwrap_or_else(|err| {
@@ -559,6 +564,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
             }
 
             compiler_cmd.arg("--mode").arg(args.mode.to_string());
+            apply_pkg_args(&mut compiler_cmd, &lockfile);
 
             let success = compiler_cmd.status().map(|x| x.success()).unwrap_or(false);
 
@@ -591,6 +597,8 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                     .map(|status| status.success())
                     .unwrap_or(false);
 
+                apply_pkg_args(&mut compiler_cmd, &lockfile);
+
                 if !success {
                     std::process::exit(1);
                 }
@@ -610,6 +618,8 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
             if let Some(ref target) = args.target {
                 compiler_cmd.arg("--target").arg(target);
             }
+
+            apply_pkg_args(&mut compiler_cmd, &lockfile);
 
             let success = compiler_cmd.status().map(|x| x.success()).unwrap_or(false);
 
@@ -660,6 +670,8 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                     emit_command.arg("--target").arg(triple);
                 }
 
+                apply_pkg_args(&mut compiler_cmd, &lockfile);
+
                 let success = emit_command
                     .status()
                     .map(|status| status.success())
@@ -684,6 +696,8 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
             if let Some(ref target) = args.target {
                 compiler_cmd.arg("--target").arg(target);
             }
+
+            apply_pkg_args(&mut compiler_cmd, &lockfile);
 
             let success = compiler_cmd.status().map(|x| x.success()).unwrap_or(false);
 
@@ -833,7 +847,7 @@ pub fn cmd_add(args: cli::AddArgs, manifest: &Manifest, root: &Path) {
         cli::println_info("Added", format!("dependency `{}` to the project", dep_name));
     }
 
-    cmd_check(&new_manifest, root, true);
+    let _ = cmd_check(&new_manifest, root, true);
 }
 
 pub fn cmd_remove(args: cli::RemoveArgs, manifest: &Manifest, root: &Path) {
@@ -868,7 +882,7 @@ pub fn cmd_remove(args: cli::RemoveArgs, manifest: &Manifest, root: &Path) {
 
     cli::println_info("Removed", format!("dependency `{}`", args.name));
 
-    cmd_check(&new_manifest, root, true);
+    let _ = cmd_check(&new_manifest, root, true);
 }
 
 pub fn cmd_test(manifest: &Manifest, root: &Path) {
