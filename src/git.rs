@@ -125,8 +125,7 @@ pub fn ensure_bare(url: &Url) -> PathBuf {
         && head
     {
         let fetch_output = Command::new("git")
-            .arg("fetch")
-            .arg("--quiet")
+            .args(["fetch", "--quiet", "origin", "+refs/heads/*:refs/heads/*"])
             .current_dir(&db)
             .output();
 
