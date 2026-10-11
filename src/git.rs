@@ -209,6 +209,97 @@ pub fn rev_parse(db: &Path, rev: impl AsRef<str>) -> String {
     rev_hash.to_string()
 }
 
+pub fn ensure_checkout(db: &Path, commit: impl AsRef<str>, dest: &Path) {
+    if !dest.is_dir() {
+        return ensure_checkout_clone(db, commit, dest);
+    }
+
+    let rev_parse = Command::new("git")
+        .arg("-C")
+        .arg(dest)
+        .arg("rev-parse")
+        .arg("HEAD")
+        .output()
+        .unwrap_or_else(|err| {
+            cli::exit_with_error(format!("Error appeared on `git` rev-parse exec: {err}"))
+        });
+
+    if !rev_parse.status.success() {
+        cli::exit_with_error(format!(
+            "Git rev-parse on dest [{}] returned an error:\n{}",
+            dest.to_string_lossy(),
+            String::from_utf8_lossy(&rev_parse.stderr),
+        ));
+    }
+
+    let rev_hash = String::from_utf8_lossy(&rev_parse.stdout);
+    let rev_hash = rev_hash.trim();
+
+    if rev_hash == commit.as_ref() {
+        return;
+    }
+
+    let checkout = Command::new("git")
+        .arg("-C")
+        .arg(dest)
+        .arg("checkout")
+        .arg("--quiet")
+        .arg(commit.as_ref())
+        .output()
+        .unwrap_or_else(|err| {
+            cli::exit_with_error(format!("Error appeared on `git` checkout exec: {err}"))
+        });
+
+    if !checkout.status.success() {
+        cli::exit_with_error(format!(
+            "Git checkout on dest [{}] returned an error:\n{}",
+            dest.to_string_lossy(),
+            String::from_utf8_lossy(&checkout.stderr),
+        ));
+    }
+}
+
+fn ensure_checkout_clone(db: &Path, commit: impl AsRef<str>, dest: &Path) {
+    let clone_cmd = Command::new("git")
+        .arg("clone")
+        .arg("--quiet")
+        .arg(db)
+        .arg(dest)
+        .output()
+        .unwrap_or_else(|err| {
+            cli::exit_with_error(format!("Error appeared on `git` clone exec: {err}"))
+        });
+
+    if !clone_cmd.status.success() {
+        cli::exit_with_error(format!(
+            "Git clone from db [{}] to dest [{}] returned an error:\n{}",
+            db.to_string_lossy(),
+            dest.to_string_lossy(),
+            String::from_utf8_lossy(&clone_cmd.stderr),
+        ));
+    }
+
+    let checkout_cmd = Command::new("git")
+        .arg("-C")
+        .arg(dest)
+        .arg("checkout")
+        .arg("--quiet")
+        .arg(commit.as_ref())
+        .output()
+        .unwrap_or_else(|err| {
+            cli::exit_with_error(format!("Error appeared on `git` cloned checkout exec: {err}"))
+        });
+
+    if !checkout_cmd.status.success() {
+        cli::exit_with_error(format!(
+            "Git cloned checkout from db [{}] to dest [{}] returned an error:\n{}",
+            db.to_string_lossy(),
+            dest.to_string_lossy(),
+            String::from_utf8_lossy(&checkout_cmd.stderr),
+        ));
+    }
+}
+
 // ==== helpers ====
 
 fn ensure_dir(path: &Path) {
