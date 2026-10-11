@@ -209,6 +209,37 @@ fn init_git_repo(root: &Path) {
     }
 }
 
+fn apply_pkg_args(command: &mut Command, lockfile: &Lockfile) {
+    for package in lockfile.package.iter().skip(1) {
+        let Some(repository) = &package.repository else {
+            cli::exit_with_error(format!("Lock node `{}` has no repository", package.name));
+        };
+
+        let Some(commit) = &package.commit else {
+            cli::exit_with_error(format!("Lock node `{}` has no commit", package.name));
+        };
+
+        let db = git::ensure_bare(repository);
+        let dest = git::checkout_path(repository, commit);
+        git::ensure_checkout(&db, commit, &dest);
+
+        let src = dest.join(SOURCE_DIRECTORY);
+
+        if !src.is_dir() {
+            cli::println_warn(format!(
+                "Dependency `{}` has no `src` directory, skipping imports",
+                package.name
+            ));
+
+            continue;
+        }
+
+        command
+            .arg("--pkg")
+            .arg(format!("{}={}", package.name, src.to_string_lossy()));
+    }
+}
+
 // ==== Initialization Commands ====
 
 /// Init project in provided dir
