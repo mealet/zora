@@ -8,7 +8,7 @@ use std::{
 };
 use url::Url;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
     pub package: Package,
     pub build: Option<Build>,
@@ -16,7 +16,7 @@ pub struct Manifest {
     pub dependencies: HashMap<String, Dependency>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Package {
     pub name: String,
     pub version: Version,
@@ -28,7 +28,7 @@ pub struct Package {
     pub license: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
 pub enum PackageType {
     #[serde(rename = "bin")]
     Bin,
@@ -40,13 +40,13 @@ pub enum PackageType {
     Dynamic,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Build {
     pub output: String,
     pub flags: Option<Vec<String>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Dependency {
     Short(Url),

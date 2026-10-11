@@ -7,12 +7,14 @@ use std::{
 };
 
 use semver::{Version, VersionReq};
+use url::Url;
 
 use crate::{
     cli::{self, CompilationMode},
-    link,
+    git, link,
     lockfile::{self, LockPackage, LockValidateError, Lockfile},
     manifest::{self, Manifest, PackageType},
+    resolve,
 };
 
 const COMPILER_COMMAND: &str = "zeen";
@@ -709,7 +711,76 @@ pub fn cmd_run(args: cli::RunArgs, manifest: &Manifest, root: &Path) {
 }
 
 pub fn cmd_add(args: cli::AddArgs, manifest: &Manifest, root: &Path) {
-    todo!()
+    let url = Url::parse(&args.url).unwrap_or_else(|err| {
+        cli::exit_with_error(format!("Url parse error: {err}"));
+    });
+
+    let probe = git::probe_branch(&url, None);
+    let db = git::ensure_bare(&url);
+    let sha = git::rev_parse(&db, &probe);
+    let dest = git::checkout_path(&url, &sha);
+
+    git::ensure_checkout(&db, &sha, &dest);
+
+    let dest_manifest_path = dest.join(manifest::MANIFEST_CONFIG);
+
+    let dep_name = if dest_manifest_path.is_file() {
+        let dest_manifest = Manifest::load_from(&dest).unwrap_or_else(|err| {
+            cli::exit_with_error(format!("Dependency `{}` manifest error:\n{err}", url));
+        });
+
+        dest_manifest.package.name
+    } else {
+        cli::println_warn(format!(
+            "Dependency doesn't have `{}`, name will be taken from repository",
+            manifest::MANIFEST_CONFIG
+        ));
+
+        url.path_segments()
+            .unwrap_or_else(|| {
+                cli::exit_with_error(format!("Url `{}` path segments unavailable", url))
+            })
+            .rev()
+            .find(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| {
+                cli::exit_with_error(format!("Url `{}` cannot extract name from url", url))
+            })
+            .strip_suffix(".git")
+            .unwrap() // hope i wont regret about it in future
+            .to_string()
+    };
+
+    let mut new_manifest = manifest.clone();
+    new_manifest
+        .dependencies
+        .insert(dep_name.clone(), manifest::Dependency::Short(url));
+
+    let new_lockfile = resolve::resolve(&new_manifest);
+
+    fs::write(
+        root.join(manifest::MANIFEST_CONFIG),
+        toml::to_string_pretty(&new_manifest).unwrap_or_else(|err| {
+            cli::exit_with_error(format!("New manifest serialization error: {err}"))
+        }),
+    )
+    .unwrap_or_else(|err| {
+        cli::exit_with_error(format!("Error with writing updated manifest: {err}"));
+    });
+
+    fs::write(
+        root.join(lockfile::LOCKFILE_CONFIG),
+        toml::to_string_pretty(&new_lockfile).unwrap_or_else(|err| {
+            cli::exit_with_error(format!("New lockfile serialization error: {err}"))
+        }),
+    )
+    .unwrap_or_else(|err| {
+        cli::exit_with_error(format!("Error with writing updated lockfile: {err}"));
+    });
+
+    cli::println_info("Added", format!("dependency `{}` to the project", dep_name));
+
+    cmd_check(&new_manifest, root, true);
 }
 
 pub fn cmd_remove(args: cli::RemoveArgs, manifest: &Manifest, root: &Path) {
@@ -717,5 +788,5 @@ pub fn cmd_remove(args: cli::RemoveArgs, manifest: &Manifest, root: &Path) {
 }
 
 pub fn cmd_test(manifest: &Manifest, root: &Path) {
-    todo!()
+    cli::exit_with_error("Not implemented yet");
 }
