@@ -804,7 +804,36 @@ pub fn cmd_add(args: cli::AddArgs, manifest: &Manifest, root: &Path) {
 }
 
 pub fn cmd_remove(args: cli::RemoveArgs, manifest: &Manifest, root: &Path) {
-    todo!()
+    if !manifest.dependencies.contains_key(&args.name) {
+        cli::exit_with_error(format!("Dependency `{}` not found", args.name));
+    }
+
+    let mut new_manifest = manifest.clone();
+    new_manifest.dependencies.remove(&args.name);
+
+    let new_lockfile = resolve::resolve(&new_manifest);
+
+    fs::write(
+        root.join(manifest::MANIFEST_CONFIG),
+        toml::to_string_pretty(&new_manifest).unwrap_or_else(|err| {
+            cli::exit_with_error(format!("New manifest serialization error: {err}"))
+        }),
+    )
+    .unwrap_or_else(|err| {
+        cli::exit_with_error(format!("Error with writing updated manifest: {err}"));
+    });
+
+    fs::write(
+        root.join(lockfile::LOCKFILE_CONFIG),
+        toml::to_string_pretty(&new_lockfile).unwrap_or_else(|err| {
+            cli::exit_with_error(format!("New lockfile serialization error: {err}"))
+        }),
+    )
+    .unwrap_or_else(|err| {
+        cli::exit_with_error(format!("Error with writing updated lockfile: {err}"));
+    });
+
+    cmd_check(&new_manifest, root, false);
 }
 
 pub fn cmd_test(manifest: &Manifest, root: &Path) {
