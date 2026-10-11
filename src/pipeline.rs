@@ -743,13 +743,29 @@ pub fn cmd_add(args: cli::AddArgs, manifest: &Manifest, root: &Path) {
             .rev()
             .find(|s| !s.is_empty())
             .map(|s| s.to_string())
+            .map(|name| name.strip_suffix(".git").unwrap_or(&name).to_string())
             .unwrap_or_else(|| {
                 cli::exit_with_error(format!("Url `{}` cannot extract name from url", url))
             })
-            .strip_suffix(".git")
-            .unwrap() // hope i wont regret about it in future
-            .to_string()
     };
+
+    let mut update = false;
+
+    if let Some(existing) = manifest.dependencies.get(&dep_name) {
+        let same_url = match existing {
+            manifest::Dependency::Short(existing_url) => existing_url == &url,
+            manifest::Dependency::Detailed { git, .. } => git == &url,
+        };
+
+        if !same_url {
+            cli::exit_with_error(format!(
+                "Dependency `{dep_name}` already exists with different url"
+            ));
+        }
+
+        update = true;
+        cli::println_info("Updating", format!("dependency `{dep_name}`"));
+    }
 
     let mut new_manifest = manifest.clone();
     new_manifest
@@ -778,7 +794,11 @@ pub fn cmd_add(args: cli::AddArgs, manifest: &Manifest, root: &Path) {
         cli::exit_with_error(format!("Error with writing updated lockfile: {err}"));
     });
 
-    cli::println_info("Added", format!("dependency `{}` to the project", dep_name));
+    if update {
+        cli::println_info("Updated", format!("dependency `{}` in project", dep_name));
+    } else {
+        cli::println_info("Added", format!("dependency `{}` to the project", dep_name));
+    }
 
     cmd_check(&new_manifest, root, true);
 }
