@@ -142,7 +142,9 @@ pub fn ensure_bare(url: &Url) -> PathBuf {
                 db
             }
 
-            Err(err) => cli::exit_with_error(format!("Error appeared on `git` bare fetch exec: {err}")),
+            Err(err) => {
+                cli::exit_with_error(format!("Error appeared on `git` bare fetch exec: {err}"))
+            }
         };
     }
 
@@ -168,6 +170,43 @@ pub fn ensure_bare(url: &Url) -> PathBuf {
         }
         Err(err) => cli::exit_with_error(format!("Error appeared on `git` bare clone exec: {err}")),
     }
+}
+
+pub fn rev_parse(db: &Path, rev: impl AsRef<str>) -> String {
+    const GIT_HASH_LEN: usize = 40;
+
+    let mut git_cmd = Command::new("git");
+
+    git_cmd
+        .arg(format!("--git-dir={}", db.to_string_lossy()))
+        .arg("rev-parse")
+        .arg("--verify")
+        .arg(rev.as_ref());
+
+    let cmd_output = git_cmd.output().unwrap_or_else(|err| {
+        cli::exit_with_error(format!("Error appeared on `git` rev-parse exec: {err}"))
+    });
+
+    if !cmd_output.status.success() {
+        cli::exit_with_error(format!(
+            "Git rev-parse on db [{}] returned an error:\n{}",
+            db.to_string_lossy(),
+            String::from_utf8_lossy(&cmd_output.stderr),
+        ));
+    }
+
+    let rev_hash = String::from_utf8_lossy(&cmd_output.stdout);
+    let rev_hash = rev_hash.trim();
+
+    if !(rev_hash.len() == GIT_HASH_LEN && rev_hash.chars().all(|ch| ch.is_ascii_hexdigit())) {
+        cli::exit_with_error(format!(
+            "Git rev-parse on db [{}] returned hash that isn't 40 characters:\n{}",
+            db.to_string_lossy(),
+            rev_hash
+        ))
+    }
+
+    rev_hash.to_string()
 }
 
 // ==== helpers ====
