@@ -833,7 +833,9 @@ pub fn cmd_remove(args: cli::RemoveArgs, manifest: &Manifest, root: &Path) {
         cli::exit_with_error(format!("Error with writing updated lockfile: {err}"));
     });
 
-    cmd_check(&new_manifest, root, false);
+    cli::println_info("Removed", format!("dependency `{}`", args.name));
+
+    cmd_check(&new_manifest, root, true);
 }
 
 pub fn cmd_test(manifest: &Manifest, root: &Path) {
