@@ -871,13 +871,16 @@ pub fn cmd_add(args: cli::AddArgs, manifest: &Manifest, root: &Path) {
         cli::println_info("Updated", format!("dependency `{}` in project", dep_name));
     } else {
         let dep_version = new_lockfile
-        .package
-        .iter()
-        .find(|package| package.name == dep_name)
-        .map(|package| package.version.to_string())
-        .unwrap_or_default();
+            .package
+            .iter()
+            .find(|package| package.name == dep_name)
+            .map(|package| package.version.to_string())
+            .unwrap_or_default();
 
-        cli::println_info("Added", format!("dependency `{dep_name}` v{dep_version} to the project"));
+        cli::println_info(
+            "Added",
+            format!("dependency `{dep_name}` v{dep_version} to the project"),
+        );
     }
 
     let _ = cmd_check(&new_manifest, root, true);
