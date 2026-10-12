@@ -223,7 +223,19 @@ fn apply_pkg_args(command: &mut Command, lockfile: &Lockfile) {
         git::ensure_commit(&db, repository, commit);
 
         let dest = git::checkout_path(repository, commit);
+        let fresh = !dest.exists();
         git::ensure_checkout(&db, commit, &dest);
+
+        if fresh {
+            cli::println_info(
+                "Checkout",
+                format!(
+                    "installed: `{}@{}`",
+                    package.name,
+                    commit.get(..9).unwrap_or(commit)
+                ),
+            );
+        }
 
         let src = dest.join(SOURCE_DIRECTORY);
 
@@ -766,6 +778,7 @@ pub fn cmd_add(args: cli::AddArgs, manifest: &Manifest, root: &Path) {
     let db = git::ensure_bare(&url);
     let sha = git::rev_parse(&db, &probe);
     let dest = git::checkout_path(&url, &sha);
+    let fresh_checkout = !dest.exists();
 
     git::ensure_checkout(&db, &sha, &dest);
 
@@ -795,6 +808,13 @@ pub fn cmd_add(args: cli::AddArgs, manifest: &Manifest, root: &Path) {
                 cli::exit_with_error(format!("Url `{}` cannot extract name from url", url))
             })
     };
+
+    if fresh_checkout {
+        cli::println_info(
+            "Checkout",
+            format!("installed: `{dep_name}@{}`", sha.get(..9).unwrap_or(&sha)),
+        );
+    }
 
     let mut update = false;
 

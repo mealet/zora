@@ -78,7 +78,15 @@ impl Resolver {
         }
 
         let dest = git::checkout_path(url, &sha);
+        let fresh = !dest.exists();
         git::ensure_checkout(&db, &sha, &dest);
+
+        if fresh {
+            cli::println_info(
+                "Checkout",
+                format!("installed: `{key}@{}`", sha.get(..9).unwrap_or(&sha)),
+            );
+        }
 
         let dep_manifest = Manifest::load_from(&dest).unwrap_or_else(|err| {
             cli::exit_with_error(format!("Dependency `{key}` manifest error:\n{err}"));
