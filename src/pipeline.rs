@@ -850,7 +850,14 @@ pub fn cmd_add(args: cli::AddArgs, manifest: &Manifest, root: &Path) {
     if update {
         cli::println_info("Updated", format!("dependency `{}` in project", dep_name));
     } else {
-        cli::println_info("Added", format!("dependency `{}` to the project", dep_name));
+        let dep_version = new_lockfile
+        .package
+        .iter()
+        .find(|package| package.name == dep_name)
+        .map(|package| package.version.to_string())
+        .unwrap_or_default();
+
+        cli::println_info("Added", format!("dependency `{dep_name}` v{dep_version} to the project"));
     }
 
     let _ = cmd_check(&new_manifest, root, true);
