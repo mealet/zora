@@ -40,6 +40,9 @@ fn main() {
         cli::Commands::Check => {
             let _ = pipeline::cmd_check(&manifest, &root, false);
         }
+
+        cli::Commands::Update => pipeline::cmd_update(&manifest, &root),
+
         cli::Commands::Build(args) => {
             let _ = pipeline::cmd_build(args, &manifest, &root);
         }

@@ -44,6 +44,9 @@ pub enum Commands {
 
     /// Check project config and source
     Check,
+
+    /// Update lock dependencies from manifest
+    Update,
 }
 
 // ==== Specifications Below ====

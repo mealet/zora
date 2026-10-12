@@ -996,6 +996,22 @@ fn human_size(bytes: u64) -> String {
     }
 }
 
+pub fn cmd_update(manifest: &Manifest, root: &Path) {
+    let new_lockfile = resolve::resolve(manifest);
+
+    fs::write(
+        root.join(lockfile::LOCKFILE_CONFIG),
+        toml::to_string_pretty(&new_lockfile).unwrap_or_else(|err| {
+            cli::exit_with_error(format!("New lockfile serialization error: {err}"))
+        }),
+    )
+    .unwrap_or_else(|err| {
+        cli::exit_with_error(format!("Error with writing updated lockfile: {err}"))
+    });
+
+    let _ = cmd_check(manifest, root, true);
+}
+
 pub fn cmd_test(manifest: &Manifest, root: &Path) {
     cli::exit_with_error("Not implemented yet");
 }
