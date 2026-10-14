@@ -210,11 +210,65 @@ fn init_git_repo(root: &Path) {
     }
 }
 
-fn apply_pkg_args(command: &mut Command, lockfile: &Lockfile) {
-    for (name, src) in dependency_sources(lockfile) {
+fn apply_pkg_args(command: &mut Command, lockfile: &Lockfile, root: &Path) {
+    let Some(project) = lockfile.package.first() else {
+        cli::exit_with_error("Lockfile has no root package");
+    };
+
+    command.arg("--pkg").arg(format!(
+        "{}={}",
+        project.name,
+        root.join(SOURCE_DIRECTORY).to_string_lossy()
+    ));
+
+    for package in lockfile.package.iter().skip(1) {
+        if package.name == project.name {
+            cli::exit_with_error(format!(
+                "Dependency `{}` shadows the project package name",
+                package.name
+            ));
+        }
+
+        let Some(repository) = &package.repository else {
+            cli::exit_with_error(format!("Lock node `{}` has no repository", package.name));
+        };
+
+        let Some(commit) = &package.commit else {
+            cli::exit_with_error(format!("Lock node `{}` has no commit", package.name));
+        };
+
+        let db = git::ensure_bare_local(repository);
+        git::ensure_commit(&db, repository, commit);
+
+        let dest = git::checkout_path(repository, commit);
+        let fresh = !dest.exists();
+        git::ensure_checkout(&db, commit, &dest);
+
+        if fresh {
+            cli::println_info(
+                "Checkout",
+                format!(
+                    "installed: `{}@{}`",
+                    package.name,
+                    commit.get(..9).unwrap_or(commit)
+                ),
+            );
+        }
+
+        let src = dest.join(SOURCE_DIRECTORY);
+
+        if !src.is_dir() {
+            cli::println_warn(format!(
+                "Dependency `{}` has no `src` directory, skipping imports",
+                package.name
+            ));
+
+            continue;
+        }
+
         command
             .arg("--pkg")
-            .arg(format!("{name}={}", src.to_string_lossy()));
+            .arg(format!("{}={}", package.name, src.to_string_lossy()));
     }
 }
 
@@ -430,7 +484,7 @@ pub fn cmd_check(manifest: &Manifest, root: &Path, avoid_execution: bool) -> Loc
     let src_dir = root.join(SOURCE_DIRECTORY);
 
     let mut check_command = compiler_command(&src_dir);
-    apply_pkg_args(&mut check_command, &lockfile);
+    apply_pkg_args(&mut check_command, &lockfile, root);
 
     check_command.arg(entry_file).arg("--check");
 
@@ -579,7 +633,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
             }
 
             compiler_cmd.arg("--mode").arg(args.mode.to_string());
-            apply_pkg_args(&mut compiler_cmd, &lockfile);
+            apply_pkg_args(&mut compiler_cmd, &lockfile, root);
 
             let success = compiler_cmd.status().map(|x| x.success()).unwrap_or(false);
 
@@ -612,7 +666,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                     .map(|status| status.success())
                     .unwrap_or(false);
 
-                apply_pkg_args(&mut compiler_cmd, &lockfile);
+                apply_pkg_args(&mut compiler_cmd, &lockfile, root);
 
                 if !success {
                     std::process::exit(1);
@@ -634,7 +688,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                 compiler_cmd.arg("--target").arg(target);
             }
 
-            apply_pkg_args(&mut compiler_cmd, &lockfile);
+            apply_pkg_args(&mut compiler_cmd, &lockfile, root);
 
             let success = compiler_cmd.status().map(|x| x.success()).unwrap_or(false);
 
@@ -685,7 +739,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                     emit_command.arg("--target").arg(triple);
                 }
 
-                apply_pkg_args(&mut compiler_cmd, &lockfile);
+                apply_pkg_args(&mut compiler_cmd, &lockfile, root);
 
                 let success = emit_command
                     .status()
@@ -712,7 +766,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                 compiler_cmd.arg("--target").arg(target);
             }
 
-            apply_pkg_args(&mut compiler_cmd, &lockfile);
+            apply_pkg_args(&mut compiler_cmd, &lockfile, root);
 
             let success = compiler_cmd.status().map(|x| x.success()).unwrap_or(false);
 
@@ -1114,7 +1168,7 @@ fn main() {{
         ));
         // }
 
-        apply_pkg_args(&mut compile, &lockfile);
+        apply_pkg_args(&mut compile, &lockfile, root);
 
         compile.stdout(Stdio::null()).stderr(Stdio::piped());
 
