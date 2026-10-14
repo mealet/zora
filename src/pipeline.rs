@@ -1054,16 +1054,16 @@ pub fn cmd_test(manifest: &Manifest, root: &Path) {
     for test in &found {
         if test.file.0 != current_file {
             if !current_file.is_empty() {
-                cli::println_info(
-                    "  Finished",
-                    format!("in {:.2}s\n", file_started.elapsed().as_secs_f32()),
-                );
+                // cli::println_info(
+                //     "  Finished",
+                //     format!("in {:.2}s\n", file_started.elapsed().as_secs_f32()),
+                // );
             }
 
             current_file = test.file.0.clone();
             file_started = std::time::Instant::now();
 
-            cli::println_info("Tests", format!("from `tests/{}`:", test.file.0));
+            cli::println_info("\nTests", format!("from `tests/{}`:", test.file.0));
         }
 
         let label = format!("{}.{}", test.module.0, test.name.0);
@@ -1128,11 +1128,13 @@ fn main() {{
             std::process::exit(1);
         }
 
-        let code = Command::new(&bin_path)
-            .status()
-            .map(|status| status.code().unwrap_or(1))
-            .unwrap_or(1);
+        let run = Command::new(&bin_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .unwrap_or_else(|err| cli::exit_with_error(format!("Unable to run test: {err}")));
 
+        let code = run.status.code().unwrap_or(1);
         let ok = if test.should_fail {
             code != 0
         } else {
@@ -1144,6 +1146,19 @@ fn main() {{
             cli::println_basic(format!("  test {label} ... {}", "[OK]".green()));
         } else {
             cli::println_basic(format!("  test {label} ... {}", "[FAILED]".red()));
+            cli::println_basic("");
+
+            let output = format!(
+                "{}{}",
+                String::from_utf8_lossy(&run.stdout),
+                String::from_utf8_lossy(&run.stderr)
+            );
+
+            for line in output.lines() {
+                cli::println_basic(format!("{} {line}", format!("[{label}]:").bright_black()));
+            }
+
+            cli::println_basic("");
             failed_names.push(label);
         }
     }
@@ -1151,10 +1166,10 @@ fn main() {{
     let _ = fs::remove_dir_all(&work_dir);
 
     if !current_file.is_empty() {
-        cli::println_info(
-            "  Finished",
-            format!("in {:.2}s", file_started.elapsed().as_secs_f32()),
-        );
+        // cli::println_info(
+        //     "  Finished",
+        //     format!("in {:.2}s", file_started.elapsed().as_secs_f32()),
+        // );
     }
 
     if failed_names.is_empty() {
@@ -1165,6 +1180,8 @@ fn main() {{
                 total_started.elapsed().as_secs_f32()
             ),
         );
+
+        cli::println_basic("");
     } else {
         cli::println_info(
             "\nTests",
@@ -1179,6 +1196,7 @@ fn main() {{
             cli::println_basic(format!("  {name}"));
         }
 
+        cli::println_basic("");
         std::process::exit(1);
     }
 }
