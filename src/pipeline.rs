@@ -1106,13 +1106,13 @@ fn main() {{
             .arg("--pkg")
             .arg(format!("tests={}", root.join("tests").to_string_lossy()));
 
-        if !matches!(manifest.package.r#type, manifest::PackageType::Bin) {
-            compile.arg("--pkg").arg(format!(
-                "{}={}",
-                manifest.package.name,
-                root.join("src").to_string_lossy()
-            ));
-        }
+        // if !matches!(manifest.package.r#type, manifest::PackageType::Bin) {
+        compile.arg("--pkg").arg(format!(
+            "{}={}",
+            manifest.package.name,
+            root.join("src").to_string_lossy()
+        ));
+        // }
 
         apply_pkg_args(&mut compile, &lockfile);
 
