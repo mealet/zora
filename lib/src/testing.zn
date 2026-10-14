@@ -1,0 +1,23 @@
+pub fn assert(condition: bool) {
+  if (!condition) {
+    @panic("Condition failed")
+  }
+}
+
+pub fn assert_msg(condition: bool, errorMessage: []const char) {
+  if (!condition) {
+    @panic("{}", errorMessage)
+  }
+}
+
+pub fn assert_eq[T: Eq + Display](actual: T, expected: T) i32 {
+  if (actual != expected) {
+    @panic("Assertion failed: {} != {}", actual, expected)
+  }
+}
+
+pub fn assert_eq_msg[T: Eq + Display](actual: T, expected: T, errorMessage: []const char) i32 {
+  if (actual != expected) {
+    @panic("{}: {} != {}", errorMessage, actual, expected)
+  }
+}
