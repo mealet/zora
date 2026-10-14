@@ -1123,7 +1123,7 @@ fn main() {{
             .unwrap_or_else(|err| cli::exit_with_error(format!("Unable to run compiler: {err}")));
 
         if !compiled.status.success() {
-            cli::println_basic(format!("  test {label} ... [COMPILE ERROR]"));
+            cli::println_basic(format!("  test {label} ... {}", "[COMPILE ERROR]".red()));
             cli::println_basic(String::from_utf8_lossy(&compiled.stderr).into_owned());
             std::process::exit(1);
         }
