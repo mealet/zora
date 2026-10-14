@@ -433,6 +433,10 @@ pub fn cmd_check(manifest: &Manifest, root: &Path, avoid_execution: bool) -> Loc
 
     check_command.arg(entry_file).arg("--check");
 
+    if manifest.package.r#type != manifest::PackageType::Bin {
+        check_command.arg("--emit").arg("OBJ");
+    }
+
     let check_success = check_command
         .status()
         .map(|status| status.success())
