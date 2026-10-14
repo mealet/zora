@@ -210,6 +210,16 @@ fn init_git_repo(root: &Path) {
 }
 
 fn apply_pkg_args(command: &mut Command, lockfile: &Lockfile) {
+    for (name, src) in dependency_sources(lockfile) {
+        command
+            .arg("--pkg")
+            .arg(format!("{name}={}", src.to_string_lossy()));
+    }
+}
+
+fn dependency_sources(lockfile: &Lockfile) -> Vec<(String, PathBuf)> {
+    let mut sources = Vec::new();
+
     for package in lockfile.package.iter().skip(1) {
         let Some(repository) = &package.repository else {
             cli::exit_with_error(format!("Lock node `{}` has no repository", package.name));
@@ -223,19 +233,7 @@ fn apply_pkg_args(command: &mut Command, lockfile: &Lockfile) {
         git::ensure_commit(&db, repository, commit);
 
         let dest = git::checkout_path(repository, commit);
-        let fresh = !dest.exists();
         git::ensure_checkout(&db, commit, &dest);
-
-        if fresh {
-            cli::println_info(
-                "Checkout",
-                format!(
-                    "installed: `{}@{}`",
-                    package.name,
-                    commit.get(..9).unwrap_or(commit)
-                ),
-            );
-        }
 
         let src = dest.join(SOURCE_DIRECTORY);
 
@@ -248,10 +246,10 @@ fn apply_pkg_args(command: &mut Command, lockfile: &Lockfile) {
             continue;
         }
 
-        command
-            .arg("--pkg")
-            .arg(format!("{}={}", package.name, src.to_string_lossy()));
+        sources.push((package.name.clone(), src));
     }
+
+    sources
 }
 
 // ==== Initialization Commands ====
@@ -376,69 +374,7 @@ pub fn cmd_check(manifest: &Manifest, root: &Path, avoid_execution: bool) -> Loc
     // Lockfile and Zeen version checks
 
     let lockfile = ensure_lockfile(root, manifest);
-
-    if let Err(err) = lockfile.validate(&ZEEN_VERSION.0) {
-        match err {
-            LockValidateError::UnsupportedVersion(used) => {
-                cli::println_error(format!(
-                    "`{}` supported version is '{}', but found {}",
-                    lockfile::LOCKFILE_CONFIG,
-                    lockfile::SUPPORTED_LOCK_VERSION,
-                    used
-                ));
-
-                cli::exit_with_error("Consider removing lockfile and running 'zora check'");
-            }
-
-            LockValidateError::ZeenMismatch {
-                package,
-                required,
-                installed,
-            } => cli::exit_with_error(format!(
-                "Package `{}` requires Zeen '{}', but found '{}'",
-                package, required, installed
-            )),
-
-            LockValidateError::EmptyGraph => {
-                cli::println_error("Root graph in lockfile not found.");
-                cli::exit_with_error("Consider removing file and running 'zora check'");
-            }
-
-            LockValidateError::RootHasSource => {
-                cli::println_error("Root graph cannot have source (repository, branch, commit).");
-                cli::exit_with_error("Consider removing file and running 'zora check'");
-            }
-
-            LockValidateError::MissingNode {
-                wanted_by,
-                package,
-                rev,
-            } => {
-                cli::println_error(format!(
-                    "Package `{wanted_by}` wanted `{package}` dependency, but it's missing."
-                ));
-                cli::println_error(format!("Missing graph: `{package}@{rev}`"));
-                cli::exit_with_error("Consider removing file and running 'zora check'");
-            }
-
-            LockValidateError::DuplicateNode { package, rev } => {
-                cli::println_error(format!(
-                    "Found duplicate node of `{package}` package (`{package}@{rev}`)."
-                ));
-                cli::exit_with_error("Consider removing file and running 'zora check'");
-            }
-
-            LockValidateError::IncompleteNode(node) => {
-                cli::println_error(format!(
-                    "Lock node `{node}` is incomplete (repository/branch/commit corrupted)."
-                ));
-                cli::exit_with_error("Consider removing file and running 'zora check'");
-            }
-        }
-
-        // In case if I forget to exit process on error
-        unreachable!()
-    }
+    validate_lockfile_or_exit(&lockfile);
 
     // Paths checks
 
@@ -507,6 +443,68 @@ pub fn cmd_check(manifest: &Manifest, root: &Path, avoid_execution: bool) -> Loc
     }
 
     lockfile
+}
+
+fn validate_lockfile_or_exit(lockfile: &Lockfile) {
+    if let Err(err) = lockfile.validate(&ZEEN_VERSION.0) {
+        match err {
+            LockValidateError::UnsupportedVersion(used) => {
+                cli::println_error(format!(
+                    "`{}` supported version is '{}', but found {}",
+                    lockfile::LOCKFILE_CONFIG,
+                    lockfile::SUPPORTED_LOCK_VERSION,
+                    used
+                ));
+
+                cli::exit_with_error("Consider removing lockfile and running 'zora check'");
+            }
+
+            LockValidateError::ZeenMismatch {
+                package,
+                required,
+                installed,
+            } => cli::exit_with_error(format!(
+                "Package `{}` requires Zeen '{}', but found '{}'",
+                package, required, installed
+            )),
+
+            LockValidateError::EmptyGraph => {
+                cli::println_error("Root graph in lockfile not found.");
+                cli::exit_with_error("Consider removing file and running 'zora check'");
+            }
+
+            LockValidateError::RootHasSource => {
+                cli::println_error("Root graph cannot have source (repository, branch, commit).");
+                cli::exit_with_error("Consider removing file and running 'zora check'");
+            }
+
+            LockValidateError::MissingNode {
+                wanted_by,
+                package,
+                rev,
+            } => {
+                cli::println_error(format!(
+                    "Package `{wanted_by}` wanted `{package}` dependency, but it's missing."
+                ));
+                cli::println_error(format!("Missing graph: `{package}@{rev}`"));
+                cli::exit_with_error("Consider removing file and running 'zora check'");
+            }
+
+            LockValidateError::DuplicateNode { package, rev } => {
+                cli::println_error(format!(
+                    "Found duplicate node of `{package}` package (`{package}@{rev}`)."
+                ));
+                cli::exit_with_error("Consider removing file and running 'zora check'");
+            }
+
+            LockValidateError::IncompleteNode(node) => {
+                cli::println_error(format!(
+                    "Lock node `{node}` is incomplete (repository/branch/commit corrupted)."
+                ));
+                cli::exit_with_error("Consider removing file and running 'zora check'");
+            }
+        }
+    }
 }
 
 type RunArtifact = PathBuf;
@@ -1010,6 +1008,15 @@ pub fn cmd_update(manifest: &Manifest, root: &Path) {
     });
 
     let _ = cmd_check(manifest, root, true);
+}
+
+pub fn cmd_deps_map(manifest: &Manifest, root: &Path) {
+    let lockfile = ensure_lockfile(root, manifest);
+    validate_lockfile_or_exit(&lockfile);
+
+    for (name, src) in dependency_sources(&lockfile) {
+        println!("{name}={}", src.to_string_lossy());
+    }
 }
 
 pub fn cmd_test(manifest: &Manifest, root: &Path) {

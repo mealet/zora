@@ -47,6 +47,9 @@ pub enum Commands {
 
     /// Update lock dependencies from manifest
     Update,
+
+    /// Print dependencies sources map
+    DepsMap
 }
 
 // ==== Specifications Below ====

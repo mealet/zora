@@ -42,6 +42,7 @@ fn main() {
         }
 
         cli::Commands::Update => pipeline::cmd_update(&manifest, &root),
+        cli::Commands::DepsMap => pipeline::cmd_deps_map(&manifest, &root),
 
         cli::Commands::Build(args) => {
             let _ = pipeline::cmd_build(args, &manifest, &root);
