@@ -9,6 +9,7 @@ mod lockfile;
 mod manifest;
 mod pipeline;
 mod resolve;
+mod tests;
 
 fn main() {
     let args = cli::Cli::parse();
