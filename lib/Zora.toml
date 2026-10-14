@@ -1,0 +1,9 @@
+[package]
+name = "zora"
+version = "0.1.0"
+zeen = "^0.3.0"
+type = "lib/static"
+
+
+
+[dependencies]
