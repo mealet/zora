@@ -1098,18 +1098,16 @@ fn main() {{
 
         apply_pkg_args(&mut compile, &lockfile);
 
-        let compiled = compile
-            .status()
-            .map(|status| status.success())
-            .unwrap_or(false);
+        compile.stdout(Stdio::null()).stderr(Stdio::piped());
 
-        if !compiled {
-            cli::println_info(
-                "Testing",
-                format!("{label} ... {}", "[COMPILER ERROR]".red()),
-            );
-            failed_names.push(label);
-            continue;
+        let compiled = compile
+            .output()
+            .unwrap_or_else(|err| cli::exit_with_error(format!("Unable to run compiler: {err}")));
+
+        if !compiled.status.success() {
+            cli::println_info("Testing", format!("{label} ... COMPILE ERROR"));
+            cli::println_basic(String::from_utf8_lossy(&compiled.stderr).into_owned());
+            std::process::exit(1);
         }
 
         let code = Command::new(&bin_path)

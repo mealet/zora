@@ -121,9 +121,9 @@ fn scan_file(path: &Path, tests: &mut Vec<DiscoveredTest>) {
         }
 
         tests.push(DiscoveredTest {
-            file: file.clone(),
-            module: module.clone(),
-            name: fn_name,
+            file: TestFile(file.clone()),
+            module: TestModule(module.clone()),
+            name: TestName(fn_name),
             should_fail,
         });
 
