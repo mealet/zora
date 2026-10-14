@@ -6,6 +6,7 @@ use std::{
     sync::{LazyLock, atomic::AtomicBool},
 };
 
+use colored::Colorize;
 use semver::{Version, VersionReq};
 use url::Url;
 
@@ -1024,5 +1025,127 @@ pub fn cmd_deps_map(manifest: &Manifest, root: &Path) {
 }
 
 pub fn cmd_test(manifest: &Manifest, root: &Path) {
-    cli::exit_with_error("Not implemented yet");
+    let _ = cmd_check(manifest, root, true);
+
+    let found = crate::tests::discover_tests(root);
+
+    if found.is_empty() {
+        cli::println_warn("No tests found in `tests/`");
+
+        return;
+    }
+
+    let lockfile = load_optional_lockfile(root)
+        .unwrap_or_else(|| cli::exit_with_error("Lockfile missing after check"));
+
+    let work_dir = std::env::temp_dir().join(format!("zora-test-{}", std::process::id()));
+
+    fs::create_dir_all(&work_dir).unwrap_or_else(|err| {
+        cli::exit_with_error(format!("Unable to create test workspace: {err}"))
+    });
+
+    let mut passed = 0u32;
+    let mut failed_names: Vec<String> = Vec::new();
+
+    for test in &found {
+        let label = format!("{}.{}", test.module.0, test.name.0);
+
+        let entry = format!(
+            r#"
+use tests.{module};
+
+fn main() {{
+    {name}();
+}}
+"#,
+            module = test.module.0,
+            name = test.name.0
+        );
+        let entry_path = work_dir.join(format!("{}_{}.zn", test.module.0, test.name.0));
+
+        fs::write(&entry_path, entry).unwrap_or_else(|err| {
+            cli::exit_with_error(format!("Unable to write test entry: {err}"))
+        });
+
+        let bin_path = work_dir.join(format!(
+            "{}_{}{}",
+            test.module.0,
+            test.name.0,
+            if cfg!(target_os = "windows") {
+                ".exe"
+            } else {
+                ""
+            }
+        ));
+
+        let mut compile = compiler_command(&work_dir);
+
+        compile
+            .arg(&entry_path)
+            .arg(&bin_path)
+            .arg("--mode")
+            .arg("Debug")
+            .arg("--pkg")
+            .arg(format!("tests={}", root.join("tests").to_string_lossy()));
+
+        if !matches!(manifest.package.r#type, manifest::PackageType::Bin) {
+            compile.arg("--pkg").arg(format!(
+                "{}={}",
+                manifest.package.name,
+                root.join("src").to_string_lossy()
+            ));
+        }
+
+        apply_pkg_args(&mut compile, &lockfile);
+
+        let compiled = compile
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false);
+
+        if !compiled {
+            cli::println_info(
+                "Testing",
+                format!("{label} ... {}", "[COMPILER ERROR]".red()),
+            );
+            failed_names.push(label);
+            continue;
+        }
+
+        let code = Command::new(&bin_path)
+            .status()
+            .map(|status| status.code().unwrap_or(1))
+            .unwrap_or(1);
+
+        let ok = if test.should_fail {
+            code != 0
+        } else {
+            code == 0
+        };
+
+        if ok {
+            passed += 1;
+            cli::println_info("Testing", format!("{label} ... {}", "[OK]".green()));
+        } else {
+            cli::println_info("Testing", format!("{label} ... {}", "[FAILED]".red()));
+            failed_names.push(label);
+        }
+    }
+
+    let _ = fs::remove_dir_all(&work_dir);
+
+    if failed_names.is_empty() {
+        cli::println_info("Tests", format!("{passed} passed"));
+    } else {
+        cli::println_info(
+            "Tests",
+            format!("{passed} passed, {} failed", failed_names.len()),
+        );
+
+        for name in failed_names {
+            cli::println_basic(format!("  {name}"));
+        }
+
+        std::process::exit(1);
+    }
 }

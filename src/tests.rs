@@ -84,7 +84,9 @@ fn scan_file(path: &Path, tests: &mut Vec<DiscoveredTest>) {
             continue;
         }
 
-        let Some(fn_name) = fn_name_of(trimmed) else {
+        let is_fn = trimmed.starts_with("pub fn") || trimmed.starts_with("fn");
+
+        if !is_fn {
             if marked {
                 cli::exit_with_error(format!(
                     "`{}`:{}: `/// @test` is not followed by a function",
@@ -95,6 +97,22 @@ fn scan_file(path: &Path, tests: &mut Vec<DiscoveredTest>) {
 
             should_fail = false;
             continue;
+        }
+
+        if marked && !trimmed.starts_with("pub fn") {
+            cli::exit_with_error(format!(
+                "`{}`:{}: test function must be `pub`",
+                path.to_string_lossy(),
+                index + 1
+            ));
+        }
+
+        let Some(fn_name) = fn_name_of(trimmed) else {
+            cli::exit_with_error(format!(
+                "`{}`:{}: cannot parse test function",
+                path.to_string_lossy(),
+                index + 1
+            ));
         };
 
         if !marked {
@@ -103,9 +121,9 @@ fn scan_file(path: &Path, tests: &mut Vec<DiscoveredTest>) {
         }
 
         tests.push(DiscoveredTest {
-            file: TestFile(file.clone()),
-            module: TestModule(module.clone()),
-            name: TestName(fn_name),
+            file: file.clone(),
+            module: module.clone(),
+            name: fn_name,
             should_fail,
         });
 
