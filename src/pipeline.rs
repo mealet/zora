@@ -1047,7 +1047,25 @@ pub fn cmd_test(manifest: &Manifest, root: &Path) {
     let mut passed = 0u32;
     let mut failed_names: Vec<String> = Vec::new();
 
+    let total_started = std::time::Instant::now();
+    let mut current_file = String::new();
+    let mut file_started = std::time::Instant::now();
+
     for test in &found {
+        if test.file.0 != current_file {
+            if !current_file.is_empty() {
+                cli::println_info(
+                    "  Finished",
+                    format!("in {:.2}s\n", file_started.elapsed().as_secs_f32()),
+                );
+            }
+
+            current_file = test.file.0.clone();
+            file_started = std::time::Instant::now();
+
+            cli::println_info("Tests", format!("from `tests/{}`:", test.file.0));
+        }
+
         let label = format!("{}.{}", test.module.0, test.name.0);
 
         let entry = format!(
@@ -1105,7 +1123,7 @@ fn main() {{
             .unwrap_or_else(|err| cli::exit_with_error(format!("Unable to run compiler: {err}")));
 
         if !compiled.status.success() {
-            cli::println_info("Testing", format!("{label} ... COMPILE ERROR"));
+            cli::println_basic(format!("  test {label} ... [COMPILE ERROR]"));
             cli::println_basic(String::from_utf8_lossy(&compiled.stderr).into_owned());
             std::process::exit(1);
         }
@@ -1123,21 +1141,38 @@ fn main() {{
 
         if ok {
             passed += 1;
-            cli::println_info("Testing", format!("{label} ... {}", "[OK]".green()));
+            cli::println_basic(format!("  test {label} ... {}", "[OK]".green()));
         } else {
-            cli::println_info("Testing", format!("{label} ... {}", "[FAILED]".red()));
+            cli::println_basic(format!("  test {label} ... {}", "[FAILED]".red()));
             failed_names.push(label);
         }
     }
 
     let _ = fs::remove_dir_all(&work_dir);
 
+    if !current_file.is_empty() {
+        cli::println_info(
+            "  Finished",
+            format!("in {:.2}s", file_started.elapsed().as_secs_f32()),
+        );
+    }
+
     if failed_names.is_empty() {
-        cli::println_info("Tests", format!("{passed} passed"));
+        cli::println_info(
+            "\nTests",
+            format!(
+                "{passed} passed in {:.2}s",
+                total_started.elapsed().as_secs_f32()
+            ),
+        );
     } else {
         cli::println_info(
-            "Tests",
-            format!("{passed} passed, {} failed", failed_names.len()),
+            "\nTests",
+            format!(
+                "{passed} passed, {} failed in {:.2}s",
+                failed_names.len(),
+                total_started.elapsed().as_secs_f32()
+            ),
         );
 
         for name in failed_names {
