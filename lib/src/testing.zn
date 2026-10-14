@@ -10,13 +10,13 @@ pub fn assert_msg(condition: bool, errorMessage: []const char) {
   }
 }
 
-pub fn assert_eq[T: Eq + Display](actual: T, expected: T) i32 {
+pub fn assert_eq[T: Eq + Display](actual: T, expected: T) {
   if (actual != expected) {
     @panic("Assertion failed: {} != {}", actual, expected)
   }
 }
 
-pub fn assert_eq_msg[T: Eq + Display](actual: T, expected: T, errorMessage: []const char) i32 {
+pub fn assert_eq_msg[T: Eq + Display](actual: T, expected: T, errorMessage: []const char) {
   if (actual != expected) {
     @panic("{}: {} != {}", errorMessage, actual, expected)
   }
