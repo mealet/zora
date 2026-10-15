@@ -154,6 +154,9 @@ pub struct RunArgs {
     /// `-m --mode`
     #[arg(short, long, value_enum, default_value_t = CompilationMode::Debug, help="Specify compilation mode")]
     pub mode: CompilationMode,
+
+    #[arg(last = true, value_name = "ARGS")]
+    pub program_args: Vec<String>,
 }
 
 /// `zora add` args

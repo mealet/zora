@@ -820,6 +820,7 @@ pub fn cmd_run(args: cli::RunArgs, manifest: &Manifest, root: &Path) {
     };
 
     let cmd = Command::new(run_artifact)
+        .args(&args.program_args)
         .status()
         .unwrap_or_else(|err| cli::exit_with_error(format!("Build execution failed: {}", err)));
 
