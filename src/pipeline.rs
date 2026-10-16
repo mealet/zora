@@ -105,12 +105,13 @@ pub fn verify_zeen_installed() -> (Version, VersionReq) {
 }
 
 /// Layer to load manifest, or display an error if not found
-pub fn load_manifest_or_exit() -> (Manifest, PathBuf) {
-    Manifest::load().unwrap_or_else(|err| {
-        use manifest::LoadError::*;
+pub fn load_manifest_or_exit(manifest_path: Option<&Path>) -> (Manifest, PathBuf) {
+    let loaded = match manifest_path {
+        Some(path) => Manifest::load_explicit(path),
+        None => Manifest::load(),
+    };
 
-        cli::exit_with_error(err);
-    })
+    loaded.unwrap_or_else(|err| cli::exit_with_error(err))
 }
 
 /// Load lockfile, if error is NotFound - return None

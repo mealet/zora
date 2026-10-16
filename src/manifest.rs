@@ -107,6 +107,19 @@ impl Manifest {
         Ok((manifest_deserialized, root_path))
     }
 
+    pub fn load_explicit(path: &Path) -> Result<(Self, PathBuf), LoadError> {
+        let manifest_content = fs::read_to_string(path)?;
+        let manifest_deserialized: Self = toml::from_str(&manifest_content)?;
+
+        let root_path = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+
+        Ok((manifest_deserialized, root_path))
+    }
+
     pub fn load_from(dir: &Path) -> Result<Self, LoadError> {
         let manifest_path = dir.join(MANIFEST_CONFIG);
         let manifest_content = fs::read_to_string(manifest_path)?;

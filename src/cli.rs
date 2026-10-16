@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use colored::Colorize;
@@ -13,6 +14,14 @@ pub struct Cli {
 
     #[arg(long = "no-color", help = "Disable output coloring")]
     pub no_color: bool,
+
+    #[arg(
+        long = "manifest-path",
+        value_name = "PATH",
+        global = true,
+        help = "Path to `Zora.toml` (defaults to searching parents)"
+    )]
+    pub manifest_path: Option<PathBuf>,
 }
 
 /// Subcommand enum

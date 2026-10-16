@@ -33,7 +33,7 @@ fn main() {
 
     // commands with manifest required
 
-    let (manifest, root) = pipeline::load_manifest_or_exit();
+    let (manifest, root) = pipeline::load_manifest_or_exit(args.manifest_path.as_deref());
 
     match args.command {
         cli::Commands::Init(_) | cli::Commands::New(_) => unreachable!(),
