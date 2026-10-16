@@ -611,8 +611,14 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
     } else {
         (manifest.package.name.trim().to_string(), vec![])
     };
+    let windows_target = args
+        .target
+        .as_deref()
+        .map(|target| target.contains("windows"))
+        .unwrap_or(cfg!(target_os = "windows"));
+
     let output_path = output_dir.join(match manifest.package.r#type {
-        PackageType::Bin if cfg!(target_os = "windows") => format!("{output_name}.exe"),
+        PackageType::Bin if windows_target => format!("{output_name}.exe"),
         _ => output_name.clone(),
     });
 
