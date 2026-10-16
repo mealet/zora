@@ -11,6 +11,10 @@ use std::{
 // ==== dirs ====
 
 pub fn zora_home() -> PathBuf {
+    if let Some(path) = std::env::var_os("ZORA_HOME") {
+        return PathBuf::from(path);
+    }
+
     match home::home_dir() {
         Some(pathbuf) => pathbuf.join(".zora"),
         None => {
