@@ -127,6 +127,13 @@ pub fn load_optional_lockfile(root: &Path) -> Option<Lockfile> {
         .ok()
 }
 
+fn resolve_manifest(manifest: &Manifest, root: &Path) -> Lockfile {
+    match load_optional_lockfile(root) {
+        Some(previous) => resolve::resolve_reusing(manifest, &previous),
+        None => resolve::resolve(manifest),
+    }
+}
+
 fn ensure_lockfile(root: &Path, manifest: &Manifest) -> Lockfile {
     if let Some(mut lockfile) = load_optional_lockfile(root) {
         let synced = lockfile.sync_root(manifest);
@@ -911,7 +918,10 @@ pub fn cmd_add(args: cli::AddArgs, manifest: &Manifest, root: &Path) {
 
     new_manifest.dependencies.insert(dep_name.clone(), entry);
 
-    let new_lockfile = resolve::resolve(&new_manifest);
+    let new_lockfile = match load_optional_lockfile(root) {
+        Some(previous) => resolve::resolve_reusing_except(&new_manifest, &previous, &dep_name),
+        None => resolve::resolve(&new_manifest),
+    };
 
     fs::write(
         root.join(manifest::MANIFEST_CONFIG),
@@ -960,7 +970,7 @@ pub fn cmd_remove(args: cli::RemoveArgs, manifest: &Manifest, root: &Path) {
     let mut new_manifest = manifest.clone();
     new_manifest.dependencies.remove(&args.name);
 
-    let new_lockfile = resolve::resolve(&new_manifest);
+    let new_lockfile = resolve_manifest(&new_manifest, root);
 
     fs::write(
         root.join(manifest::MANIFEST_CONFIG),

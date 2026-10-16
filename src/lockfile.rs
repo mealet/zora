@@ -15,7 +15,7 @@ pub struct Lockfile {
     pub package: Vec<LockPackage>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LockPackage {
     pub name: String,
     pub version: Version,
@@ -32,7 +32,7 @@ pub struct LockPackage {
 }
 
 /// Dependency structure from format "name@rev"
-#[derive(Debug, Serialize, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Serialize, Hash, Eq, PartialEq)]
 pub struct LockDependency {
     pub package: String,
     pub rev: String,
