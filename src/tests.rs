@@ -99,7 +99,12 @@ fn scan_file(path: &Path, tests: &mut Vec<DiscoveredTest>) {
             continue;
         }
 
-        if marked && !trimmed.starts_with("pub fn") {
+        if !marked {
+            should_fail = false;
+            continue;
+        }
+
+        if !trimmed.starts_with("pub fn") {
             cli::exit_with_error(format!(
                 "`{}`:{}: test function must be `pub`",
                 path.to_string_lossy(),
@@ -114,11 +119,6 @@ fn scan_file(path: &Path, tests: &mut Vec<DiscoveredTest>) {
                 index + 1
             ));
         };
-
-        if !marked {
-            should_fail = false;
-            continue;
-        }
 
         tests.push(DiscoveredTest {
             file: TestFile(file.clone()),
@@ -179,5 +179,30 @@ mod discovery_tests {
     #[test]
     fn fn_name_strips_return_type() {
         assert_eq!(fn_name_of("pub fn value() i32 {"), Some("value".to_owned()));
+    }
+
+    #[test]
+    fn ignores_unmarked_helpers_with_parameters() {
+        let dir = std::env::temp_dir().join(format!("zora-scan-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let path = dir.join("sample.zn");
+
+        std::fs::write(
+            &path,
+            "fn add_2(x: i32) i32 {\n  x + 2\n}\n\n/// @test\npub fn add_test() {\n}\n\n/// @test\n/// @should-fail\npub fn fail_test() {\n}\n",
+        )
+        .unwrap();
+
+        let mut tests = Vec::new();
+        scan_file(&path, &mut tests);
+
+        assert_eq!(tests.len(), 2);
+        assert_eq!(tests[0].name.0, "add_test");
+        assert!(!tests[0].should_fail);
+        assert_eq!(tests[1].name.0, "fail_test");
+        assert!(tests[1].should_fail);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
