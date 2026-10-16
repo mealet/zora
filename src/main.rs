@@ -1,6 +1,4 @@
-#![allow(unused)]
-
-use clap::{CommandFactory, Parser};
+use clap::Parser;
 
 mod cli;
 mod fsio;
@@ -17,6 +15,7 @@ fn main() {
 
     if args.no_color {
         colored::control::set_override(false);
+        pipeline::disable_color();
     }
 
     // initialization commands

@@ -3,7 +3,6 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use colored::Colorize;
-use serde::Serialize;
 
 /// Main CLI parser struct
 #[derive(Debug, Parser)]
@@ -202,10 +201,6 @@ pub fn println_warn(message: impl Display) {
 
 pub fn println_info(prefix: impl Display, message: impl Display) {
     eprintln!("{} {}", format!("{}", prefix).blue(), message);
-}
-
-pub fn println_primary(message: impl Display) {
-    println!("{}", message.to_string().blue());
 }
 
 pub fn println_basic(message: impl Display) {

@@ -13,7 +13,7 @@ use url::Url;
 use crate::{
     cli::{self, CompilationMode},
     git, link,
-    lockfile::{self, LockPackage, LockValidateError, Lockfile},
+    lockfile::{self, LockValidateError, Lockfile},
     manifest::{self, Manifest, PackageType},
     resolve,
 };
@@ -41,7 +41,6 @@ pub fn add_int(a: i32, b: i32) i32 {
 "#;
 
 const LIB_TYPE_DEFAULT: manifest::PackageType = manifest::PackageType::Static;
-const INIT_VERSION_DEFAULT: &str = "0.0.0";
 
 static ZEEN_VERSION: LazyLock<(Version, VersionReq)> = LazyLock::new(verify_zeen_installed);
 static NO_COLOR: AtomicBool = AtomicBool::new(false);
@@ -1075,19 +1074,10 @@ pub fn cmd_test(manifest: &Manifest, root: &Path) {
 
     let total_started = std::time::Instant::now();
     let mut current_file = String::new();
-    let mut file_started = std::time::Instant::now();
 
     for test in &found {
         if test.file.0 != current_file {
-            if !current_file.is_empty() {
-                // cli::println_info(
-                //     "  Finished",
-                //     format!("in {:.2}s\n", file_started.elapsed().as_secs_f32()),
-                // );
-            }
-
             current_file = test.file.0.clone();
-            file_started = std::time::Instant::now();
 
             cli::println_info("\nTests", format!("from `tests/{}`:", test.file.0));
         }
@@ -1182,13 +1172,6 @@ fn main() {{
     }
 
     let _ = fs::remove_dir_all(&work_dir);
-
-    if !current_file.is_empty() {
-        // cli::println_info(
-        //     "  Finished",
-        //     format!("in {:.2}s", file_started.elapsed().as_secs_f32()),
-        // );
-    }
 
     if failed_names.is_empty() {
         cli::println_info(
