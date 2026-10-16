@@ -198,3 +198,60 @@ impl LockPackage {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn manifest(name: &str) -> Manifest {
+        let text = format!(
+            r#"
+[package]
+name = "{name}"
+version = "0.1.0"
+zeen = "^0.1.0"
+type = "bin"
+"#
+        );
+
+        toml::from_str(&text).unwrap()
+    }
+
+    #[test]
+    fn lockfile_roundtrips_dependencies() {
+        let mut root = LockPackage::from_manifest(&manifest("root"));
+        root.dependencies = vec![LockDependency {
+            package: "dep".to_owned(),
+            rev: "abc123".to_owned(),
+        }];
+
+        let lockfile = Lockfile {
+            version: SUPPORTED_LOCK_VERSION,
+            package: vec![root],
+        };
+
+        let text = toml::to_string_pretty(&lockfile).unwrap();
+        let parsed: Lockfile = toml::from_str(&text).unwrap();
+
+        assert_eq!(parsed.package[0].dependencies.len(), 1);
+        assert_eq!(parsed.package[0].dependencies[0].package, "dep");
+        assert_eq!(parsed.package[0].dependencies[0].rev, "abc123");
+    }
+
+    #[test]
+    fn dependency_requires_revision_separator() {
+        let text = r#"
+version = 1
+
+[[package]]
+name = "root"
+version = "0.1.0"
+zeen = "^0.1.0"
+dependencies = ["broken"]
+"#;
+
+        let parsed: Result<Lockfile, _> = toml::from_str(text);
+
+        assert!(parsed.is_err());
+    }
+}

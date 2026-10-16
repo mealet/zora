@@ -1201,3 +1201,35 @@ fn main() {{
         std::process::exit(1);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn output_name_accepts_plain_name() {
+        assert!(valid_output_name("tool"));
+    }
+
+    #[test]
+    fn output_name_rejects_extension() {
+        assert!(!valid_output_name("tool.exe"));
+    }
+
+    #[test]
+    fn output_name_rejects_separators() {
+        assert!(!valid_output_name("nested/tool"));
+        assert!(!valid_output_name("nested\\tool"));
+    }
+
+    #[test]
+    fn output_name_rejects_empty() {
+        assert!(!valid_output_name(""));
+    }
+
+    #[test]
+    fn human_size_scales_units() {
+        assert_eq!(human_size(512), "512 B");
+        assert_eq!(human_size(2048), "2.0 KB");
+    }
+}

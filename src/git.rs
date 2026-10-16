@@ -421,3 +421,46 @@ fn ensure_parent_dirs(file_path: &Path) {
         _ => {}
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn repo(value: &str) -> Url {
+        Url::parse(value).unwrap()
+    }
+
+    #[test]
+    fn canonical_url_ignores_git_suffix_and_trailing_slash() {
+        let base = canonical_url(&repo("https://github.com/mealet/zora"));
+        let suffix = canonical_url(&repo("https://github.com/mealet/zora.git"));
+        let slash = canonical_url(&repo("https://github.com/mealet/zora/"));
+
+        assert_eq!(base, suffix);
+        assert_eq!(base, slash);
+    }
+
+    #[test]
+    fn canonical_url_lowercases_host() {
+        let mixed = canonical_url(&repo("https://GitHub.com/mealet/zora"));
+        let lower = canonical_url(&repo("https://github.com/mealet/zora"));
+
+        assert_eq!(mixed, lower);
+    }
+
+    #[test]
+    fn url_hash_matches_for_equivalent_urls() {
+        let plain = url_hash(&repo("https://github.com/mealet/zora"));
+        let with_suffix = url_hash(&repo("https://github.com/mealet/zora.git"));
+
+        assert_eq!(plain, with_suffix);
+    }
+
+    #[test]
+    fn probe_branch_accepts_full_commit_hash() {
+        let commit = "0123456789abcdef0123456789abcdef01234567";
+        let probed = probe_branch(&repo("https://example.com/repo"), Some(commit.to_owned()));
+
+        assert_eq!(probed, commit);
+    }
+}

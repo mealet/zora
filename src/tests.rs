@@ -161,3 +161,23 @@ fn fn_name_of(line: &str) -> Option<String> {
 
     Some(name.trim().to_owned())
 }
+
+#[cfg(test)]
+mod discovery_tests {
+    use super::*;
+
+    #[test]
+    fn fn_name_parses_public_function() {
+        assert_eq!(fn_name_of("pub fn hello()"), Some("hello".to_owned()));
+    }
+
+    #[test]
+    fn fn_name_parses_private_function() {
+        assert_eq!(fn_name_of("fn helper()"), Some("helper".to_owned()));
+    }
+
+    #[test]
+    fn fn_name_strips_return_type() {
+        assert_eq!(fn_name_of("pub fn value() i32 {"), Some("value".to_owned()));
+    }
+}
