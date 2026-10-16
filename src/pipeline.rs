@@ -653,7 +653,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                     .arg(TYPE_LIB_ENTRY)
                     .arg(&output_path)
                     .arg("--mode")
-                    .arg("Release")
+                    .arg(args.mode.to_string())
                     .arg("--emit")
                     .arg(emit.to_string());
 
@@ -681,7 +681,8 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                 .arg(TYPE_LIB_ENTRY)
                 .arg(&output_path)
                 .args(compiler_flags)
-                .args(["--mode", "Release"])
+                .arg("--mode")
+                .arg(args.mode.to_string())
                 .args(["--emit", "OBJ"]);
 
             if let Some(ref target) = args.target {
@@ -731,7 +732,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                     .arg(TYPE_LIB_ENTRY)
                     .arg(&output_path)
                     .arg("--mode")
-                    .arg("Release")
+                    .arg(args.mode.to_string())
                     .arg("--emit")
                     .arg(emit.to_string());
 
@@ -759,7 +760,8 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                 .arg(TYPE_LIB_ENTRY)
                 .arg(&output_path)
                 .args(compiler_flags)
-                .args(["--mode", "Release"])
+                .arg("--mode")
+                .arg(args.mode.to_string())
                 .args(["--emit", "OBJ"]);
 
             if let Some(ref target) = args.target {
