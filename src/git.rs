@@ -33,11 +33,32 @@ fn zora_checkouts() -> PathBuf {
 
 pub fn url_hash(url: &Url) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(url.as_str());
+    hasher.update(canonical_url(url));
 
     let full = hasher.finalize();
 
     hex::encode(&full[..16])
+}
+
+fn canonical_url(url: &Url) -> String {
+    let scheme = url.scheme().to_ascii_lowercase();
+    let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
+    let port = url
+        .port()
+        .map(|port| format!(":{port}"))
+        .unwrap_or_default();
+
+    let mut path = url.path().to_owned();
+
+    if let Some(stripped) = path.strip_suffix(".git") {
+        path = stripped.to_owned();
+    }
+
+    while path.len() > 1 && path.ends_with('/') {
+        path.pop();
+    }
+
+    format!("{scheme}://{host}{port}{path}")
 }
 
 pub fn db_path(url: &Url) -> PathBuf {
