@@ -174,13 +174,15 @@ fn save_lockfile(root: &Path, lockfile: &Lockfile) {
         cli::exit_with_error(format!("Unable to serialize toml lockfile: {err}"))
     });
 
-    fs::write(root.join(lockfile::LOCKFILE_CONFIG), content).unwrap_or_else(|err| {
-        cli::exit_with_error(format!(
-            "Error with writing '{}': {}",
-            lockfile::LOCKFILE_CONFIG,
-            err
-        ))
+    crate::fsio::write(&root.join(lockfile::LOCKFILE_CONFIG), content);
+}
+
+fn save_manifest(root: &Path, manifest: &Manifest) {
+    let content = toml::to_string_pretty(manifest).unwrap_or_else(|err| {
+        cli::exit_with_error(format!("Unable to serialize toml manifest: {err}"))
     });
+
+    crate::fsio::write(&root.join(manifest::MANIFEST_CONFIG), content);
 }
 
 /// Compiler's command with environment
@@ -209,7 +211,7 @@ fn init_git_repo(root: &Path) {
         let mut gitignore_content = ["/dist"].join("\n");
         gitignore_content.push('\n');
 
-        let _ = fs::write(root.join(".gitignore"), gitignore_content);
+        crate::fsio::write(&root.join(".gitignore"), gitignore_content);
     }
 }
 
@@ -343,17 +345,7 @@ fn project_init(name: impl AsRef<str>, root: &Path, is_lib: bool) {
     });
 
     // `Zora.toml` config
-    let manifest_content = toml::to_string_pretty(&manifest).unwrap_or_else(|err| {
-        cli::exit_with_error(format!("Unable to serialize toml manifest: {}", err));
-    });
-
-    fs::write(root.join(manifest::MANIFEST_CONFIG), manifest_content).unwrap_or_else(|err| {
-        cli::exit_with_error(format!(
-            "Error with writing '{}': {}",
-            manifest::MANIFEST_CONFIG,
-            err
-        ))
-    });
+    save_manifest(root, &manifest);
 
     // `Zora.lock` lockfile
     let _ = ensure_lockfile(root, &manifest);
@@ -366,9 +358,7 @@ fn project_init(name: impl AsRef<str>, root: &Path, is_lib: bool) {
     };
     let entry_content = if is_lib { INIT_LIB_CODE } else { INIT_BIN_CODE };
 
-    fs::write(root.join(SOURCE_DIRECTORY).join(entry_file), entry_content).unwrap_or_else(|err| {
-        cli::exit_with_error(format!("Error with filling entry file: {}", err))
-    });
+    crate::fsio::write(&root.join(SOURCE_DIRECTORY).join(entry_file), entry_content);
 
     // git project init
     init_git_repo(root);
@@ -919,25 +909,8 @@ pub fn cmd_add(args: cli::AddArgs, manifest: &Manifest, root: &Path) {
         None => resolve::resolve(&new_manifest),
     };
 
-    fs::write(
-        root.join(manifest::MANIFEST_CONFIG),
-        toml::to_string_pretty(&new_manifest).unwrap_or_else(|err| {
-            cli::exit_with_error(format!("New manifest serialization error: {err}"))
-        }),
-    )
-    .unwrap_or_else(|err| {
-        cli::exit_with_error(format!("Error with writing updated manifest: {err}"));
-    });
-
-    fs::write(
-        root.join(lockfile::LOCKFILE_CONFIG),
-        toml::to_string_pretty(&new_lockfile).unwrap_or_else(|err| {
-            cli::exit_with_error(format!("New lockfile serialization error: {err}"))
-        }),
-    )
-    .unwrap_or_else(|err| {
-        cli::exit_with_error(format!("Error with writing updated lockfile: {err}"));
-    });
+    save_manifest(root, &new_manifest);
+    save_lockfile(root, &new_lockfile);
 
     if update {
         cli::println_info("Updated", format!("dependency `{}` in project", dep_name));
@@ -968,25 +941,8 @@ pub fn cmd_remove(args: cli::RemoveArgs, manifest: &Manifest, root: &Path) {
 
     let new_lockfile = resolve_manifest(&new_manifest, root);
 
-    fs::write(
-        root.join(manifest::MANIFEST_CONFIG),
-        toml::to_string_pretty(&new_manifest).unwrap_or_else(|err| {
-            cli::exit_with_error(format!("New manifest serialization error: {err}"))
-        }),
-    )
-    .unwrap_or_else(|err| {
-        cli::exit_with_error(format!("Error with writing updated manifest: {err}"));
-    });
-
-    fs::write(
-        root.join(lockfile::LOCKFILE_CONFIG),
-        toml::to_string_pretty(&new_lockfile).unwrap_or_else(|err| {
-            cli::exit_with_error(format!("New lockfile serialization error: {err}"))
-        }),
-    )
-    .unwrap_or_else(|err| {
-        cli::exit_with_error(format!("Error with writing updated lockfile: {err}"));
-    });
+    save_manifest(root, &new_manifest);
+    save_lockfile(root, &new_lockfile);
 
     cli::println_info("Removed", format!("dependency `{}`", args.name));
 
@@ -1071,15 +1027,7 @@ fn human_size(bytes: u64) -> String {
 pub fn cmd_update(manifest: &Manifest, root: &Path) {
     let new_lockfile = resolve::resolve(manifest);
 
-    fs::write(
-        root.join(lockfile::LOCKFILE_CONFIG),
-        toml::to_string_pretty(&new_lockfile).unwrap_or_else(|err| {
-            cli::exit_with_error(format!("New lockfile serialization error: {err}"))
-        }),
-    )
-    .unwrap_or_else(|err| {
-        cli::exit_with_error(format!("Error with writing updated lockfile: {err}"))
-    });
+    save_lockfile(root, &new_lockfile);
 
     let _ = cmd_check(manifest, root, true);
 }
