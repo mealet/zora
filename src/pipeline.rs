@@ -135,56 +135,51 @@ fn resolve_manifest(manifest: &Manifest, root: &Path) -> Lockfile {
 }
 
 fn ensure_lockfile(root: &Path, manifest: &Manifest) -> Lockfile {
-    if let Some(mut lockfile) = load_optional_lockfile(root) {
-        let synced = lockfile.sync_root(manifest);
+    let Some(lockfile) = load_optional_lockfile(root) else {
+        cli::println_info(
+            "Creating",
+            format!("new lockfile `{}`", lockfile::LOCKFILE_CONFIG),
+        );
 
-        if synced {
-            cli::println_info(
-                "Updating",
-                format!("lockfile `{}` (sync actions)", lockfile::LOCKFILE_CONFIG),
-            );
+        let resolved = resolve::resolve(manifest);
+        save_lockfile(root, &resolved);
 
-            let lockfile_content = toml::to_string_pretty(&lockfile).unwrap_or_else(|err| {
-                cli::exit_with_error(format!("Unable to serialize toml lockfile: {}", err))
-            });
+        return resolved;
+    };
 
-            fs::write(root.join(lockfile::LOCKFILE_CONFIG), lockfile_content).unwrap_or_else(
-                |err| {
-                    cli::exit_with_error(format!(
-                        "Error with writing '{}': {}",
-                        lockfile::LOCKFILE_CONFIG,
-                        err
-                    ))
-                },
-            );
-        }
+    let resolved = resolve::resolve_reusing(manifest, &lockfile);
 
-        // TODO: Dependencies resolver sync
+    if !lockfiles_equal(&lockfile, &resolved) {
+        cli::println_info(
+            "Updating",
+            format!("lockfile `{}` (sync actions)", lockfile::LOCKFILE_CONFIG),
+        );
 
-        return lockfile;
+        save_lockfile(root, &resolved);
     }
 
-    // Lock not found, creating new
+    resolved
+}
 
-    cli::println_info(
-        "Creating",
-        format!("new lockfile `{}`", lockfile::LOCKFILE_CONFIG),
-    );
+fn lockfiles_equal(left: &Lockfile, right: &Lockfile) -> bool {
+    match (toml::to_string_pretty(left), toml::to_string_pretty(right)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
+}
 
-    let fresh_lockfile = Lockfile::fresh(manifest);
-    let lockfile_content = toml::to_string_pretty(&fresh_lockfile).unwrap_or_else(|err| {
-        cli::exit_with_error(format!("Unable to serialize toml lockfile: {}", err))
+fn save_lockfile(root: &Path, lockfile: &Lockfile) {
+    let content = toml::to_string_pretty(lockfile).unwrap_or_else(|err| {
+        cli::exit_with_error(format!("Unable to serialize toml lockfile: {err}"))
     });
 
-    fs::write(root.join(lockfile::LOCKFILE_CONFIG), lockfile_content).unwrap_or_else(|err| {
+    fs::write(root.join(lockfile::LOCKFILE_CONFIG), content).unwrap_or_else(|err| {
         cli::exit_with_error(format!(
             "Error with writing '{}': {}",
             lockfile::LOCKFILE_CONFIG,
             err
         ))
     });
-
-    fresh_lockfile
 }
 
 /// Compiler's command with environment

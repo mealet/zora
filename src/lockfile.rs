@@ -77,13 +77,6 @@ where
 }
 
 impl Lockfile {
-    pub fn fresh(manifest: &Manifest) -> Self {
-        Self {
-            version: SUPPORTED_LOCK_VERSION,
-            package: vec![LockPackage::from_manifest(manifest)],
-        }
-    }
-
     pub fn load(root: &Path) -> Result<Self, LoadError> {
         let lockfile_path = root.join(LOCKFILE_CONFIG);
         if !lockfile_path.is_file() {
@@ -97,25 +90,6 @@ impl Lockfile {
         let lockfile: Self = toml::from_str(&lockfile_content)?;
 
         Ok(lockfile)
-    }
-
-    pub fn sync_root(&mut self, manifest: &Manifest) -> bool {
-        let Some(root) = self.package.first_mut() else {
-            self.package.push(LockPackage::from_manifest(manifest));
-            return true;
-        };
-
-        let changed = !(root.name == manifest.package.name
-            && root.version == manifest.package.version
-            && root.zeen == manifest.package.zeen
-            && root.repository == manifest.package.repository);
-
-        if changed {
-            let synced_package = LockPackage::from_manifest(manifest);
-            *root = synced_package;
-        }
-
-        changed
     }
 
     pub fn validate(&self, zeen_installed: &Version) -> Result<(), LockValidateError> {
