@@ -20,54 +20,43 @@ pub fn archive_static(objects: &[PathBuf], output: &Path, target_triple: Option<
     let triple = target_triple.unwrap_or_default();
 
     if triple.contains("msvc") {
-        archive_msvc(objects, output);
+        archive_msvc(objects, output, triple);
     } else {
-        archive_unix(objects, output);
+        archive_unix(objects, output, triple);
     }
 
     output.to_path_buf()
 }
 
-fn archive_unix(objects: &[PathBuf], output: &Path) {
-    let candidates = ["llvm-ar", "ar"];
+fn archive_unix(objects: &[PathBuf], output: &Path, triple: &str) {
+    let candidates = tool_candidates("AR", "ar", &["llvm-ar"], triple);
 
-    for tool in candidates {
-        let status = Command::new(tool)
-            .arg("crus")
-            .arg(output)
-            .args(objects)
-            .status();
+    let archived = run_first(&candidates, |command| {
+        command.arg("crus").arg(output).args(objects);
+    });
 
-        match status {
-            Ok(status) if status.success() => return,
-            Ok(_) => cli::exit_with_error(format!("Archiver `{tool}` failed")),
-            Err(_) => continue,
-        }
+    if archived.is_none() {
+        cli::exit_with_error(format!(
+            "No archiver found (tried `{}`)",
+            candidates.join("`, `")
+        ));
     }
-
-    cli::exit_with_error("No archiver found (tried `llvm-ar`, `ar`)");
 }
 
-fn archive_msvc(objects: &[PathBuf], output: &Path) {
-    let candidates = ["llvm-lib", "lib"];
-
+fn archive_msvc(objects: &[PathBuf], output: &Path, triple: &str) {
+    let candidates = tool_candidates("AR", "lib", &["llvm-lib"], triple);
     let output_flag = format!("/OUT:{}", output.to_string_lossy());
 
-    for tool in candidates {
-        let status = Command::new(tool)
-            .arg("/NOLOGO")
-            .arg(&output_flag)
-            .args(objects)
-            .status();
+    let archived = run_first(&candidates, |command| {
+        command.arg("/NOLOGO").arg(&output_flag).args(objects);
+    });
 
-        match status {
-            Ok(status) if status.success() => return,
-            Ok(_) => cli::exit_with_error(format!("Archiver `{tool}` failed")),
-            Err(_) => continue,
-        }
+    if archived.is_none() {
+        cli::exit_with_error(format!(
+            "No archiver found (tried `{}`)",
+            candidates.join("`, `")
+        ));
     }
-
-    cli::exit_with_error("No archiver found (tried `llvm-lib`, `lib`)");
 }
 
 pub fn dynamic_library_name(base_name: &str, target_triple: Option<&str>) -> String {
@@ -103,7 +92,7 @@ pub fn link_dynamic(objects: &[PathBuf], output: &Path, target_triple: Option<&s
 }
 
 fn link_shared(objects: &[PathBuf], output: &Path, triple: &str) {
-    let candidates = ["cc", "clang", "gcc"];
+    let candidates = tool_candidates("CC", "cc", &["clang", "gcc"], triple);
 
     let shared_flag = if triple.contains("apple") || triple.contains("darwin") {
         "-dynamiclib"
@@ -111,43 +100,76 @@ fn link_shared(objects: &[PathBuf], output: &Path, triple: &str) {
         "-shared"
     };
 
-    for tool in candidates {
-        let status = Command::new(tool)
-            .arg(shared_flag)
-            .arg("-o")
-            .arg(output)
-            .args(objects)
-            .status();
+    let linked = run_first(&candidates, |command| {
+        command.arg(shared_flag).arg("-o").arg(output).args(objects);
+    });
 
-        match status {
-            Ok(status) if status.success() => return,
-            Ok(_) => cli::exit_with_error(format!("Linker `{tool}` failed")),
-            Err(_) => continue,
-        }
+    if linked.is_none() {
+        cli::exit_with_error(format!(
+            "No C compiler found (tried `{}`)",
+            candidates.join("`, `")
+        ));
     }
-
-    cli::exit_with_error("No C compiler found (tried `cc`, `clang`, `gcc`)");
 }
 
 fn link_msvc_dll(objects: &[PathBuf], output: &Path) {
-    let candidates = ["link", "lld-link"];
-
+    let candidates = tool_candidates("LD", "link", &["lld-link"], "");
     let output_flag = format!("/OUT:{}", output.to_string_lossy());
 
-    for tool in candidates {
-        let status = Command::new(tool)
+    let linked = run_first(&candidates, |command| {
+        command
             .arg("/NOLOGO")
             .arg("/DLL")
             .arg(&output_flag)
-            .args(objects)
-            .status();
+            .args(objects);
+    });
 
-        match status {
-            Ok(status) if status.success() => return,
-            Ok(_) => cli::exit_with_error(format!("Linker `{tool}` failed")),
+    if linked.is_none() {
+        cli::exit_with_error(format!(
+            "No linker found (tried `{}`)",
+            candidates.join("`, `")
+        ));
+    }
+}
+
+fn tool_candidates(env_key: &str, tool: &str, alternatives: &[&str], triple: &str) -> Vec<String> {
+    if let Some(value) = std::env::var_os(env_key) {
+        return vec![value.to_string_lossy().into_owned()];
+    }
+
+    let mut candidates = Vec::new();
+
+    if triple.contains("gnu") || triple.contains("musl") {
+        if triple.contains("windows")
+            && let Some(arch) = triple.split('-').next()
+        {
+            candidates.push(format!("{arch}-w64-mingw32-{tool}"));
+        }
+
+        candidates.push(format!("{triple}-{tool}"));
+    }
+
+    candidates.push(tool.to_owned());
+    candidates.extend(
+        alternatives
+            .iter()
+            .map(|alternative| (*alternative).to_owned()),
+    );
+
+    candidates
+}
+
+fn run_first(candidates: &[String], configure: impl Fn(&mut Command)) -> Option<String> {
+    for tool in candidates {
+        let mut command = Command::new(tool);
+        configure(&mut command);
+
+        match command.status() {
+            Ok(status) if status.success() => return Some(tool.clone()),
+            Ok(_) => cli::exit_with_error(format!("Tool `{tool}` failed")),
             Err(_) => continue,
         }
     }
 
-    cli::exit_with_error("No linker found (tried `link`, `lld-link`)");
+    None
 }
