@@ -661,12 +661,12 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                     emit_command.arg("--target").arg(triple);
                 }
 
+                apply_pkg_args(&mut emit_command, &lockfile, root);
+
                 let success = emit_command
                     .status()
                     .map(|status| status.success())
                     .unwrap_or(false);
-
-                apply_pkg_args(&mut compiler_cmd, &lockfile, root);
 
                 if !success {
                     std::process::exit(1);
@@ -739,7 +739,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                     emit_command.arg("--target").arg(triple);
                 }
 
-                apply_pkg_args(&mut compiler_cmd, &lockfile, root);
+                apply_pkg_args(&mut emit_command, &lockfile, root);
 
                 let success = emit_command
                     .status()
