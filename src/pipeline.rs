@@ -448,14 +448,7 @@ pub fn cmd_check(manifest: &Manifest, root: &Path, avoid_execution: bool) -> Loc
     // Build section checks
 
     if let Some(ref build_section) = manifest.build {
-        let output = &build_section.output;
-        let output_verification = !(output.contains(".")
-            || output.contains(" ")
-            || output.contains("/")
-            || output.contains("\\")
-            || output.is_empty());
-
-        if !output_verification {
+        if !valid_output_name(&build_section.output) {
             cli::exit_with_error("Field `[build].output` should have only name without extension");
         }
 
@@ -495,6 +488,14 @@ pub fn cmd_check(manifest: &Manifest, root: &Path, avoid_execution: bool) -> Loc
     }
 
     lockfile
+}
+
+fn valid_output_name(name: &str) -> bool {
+    !(name.contains('.')
+        || name.contains(' ')
+        || name.contains('/')
+        || name.contains('\\')
+        || name.is_empty())
 }
 
 fn validate_lockfile_or_exit(lockfile: &Lockfile) {
@@ -602,7 +603,15 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
     let (output_name, compiler_flags) = if let Some(build) = &manifest.build {
         (build.output.clone(), build.flags.clone().unwrap_or(vec![]))
     } else {
-        (manifest.package.name.trim().to_string(), vec![])
+        let name = manifest.package.name.trim().to_string();
+
+        if !valid_output_name(&name) {
+            cli::exit_with_error(format!(
+                "Package name `{name}` is not a valid output name, rename the package or set `[build].output`"
+            ));
+        }
+
+        (name, vec![])
     };
     let windows_target = args
         .target
