@@ -3,9 +3,11 @@ use url::Url;
 
 use crate::cli;
 use std::{
-    fs,
+    fs::{self, OpenOptions},
+    io::ErrorKind,
     path::{Path, PathBuf},
     process::Command,
+    time::{Duration, SystemTime},
 };
 
 // ==== dirs ====
@@ -147,99 +149,109 @@ pub fn probe_branch(url: &Url, preferred: Option<String>) -> String {
 }
 
 pub fn ensure_bare(url: &Url) -> PathBuf {
-    let db = db_path(url);
-    let head = fs::read_to_string(db.join("HEAD"))
-        .map(|content| content.starts_with("ref"))
-        .ok();
-
-    if let Some(head) = head
-        && head
-    {
-        let fetch_output = Command::new("git")
-            .args(["fetch", "--quiet", "origin", "+refs/heads/*:refs/heads/*"])
-            .current_dir(&db)
-            .output();
-
-        return match fetch_output {
-            Ok(out) => {
-                if !out.status.success() {
-                    cli::exit_with_error(format!(
-                        "Git fetch returned an error:\n{}",
-                        String::from_utf8_lossy(&out.stderr)
-                    ));
-                }
-
-                db
-            }
-
-            Err(err) => {
-                cli::exit_with_error(format!("Error appeared on `git` bare fetch exec: {err}"))
-            }
-        };
-    }
-
-    ensure_dir(&db);
-
-    let output = Command::new("git")
-        .arg("clone")
-        .args(["--bare", "--quiet"])
-        .arg(url.as_str())
-        .arg(&db)
-        .output();
-
-    match output {
-        Ok(out) => {
-            if !out.status.success() {
-                cli::exit_with_error(format!(
-                    "Bare git clone returned an error:\n{}",
-                    String::from_utf8_lossy(&out.stderr)
-                ));
-            }
-
-            db
-        }
-        Err(err) => cli::exit_with_error(format!("Error appeared on `git` bare clone exec: {err}")),
-    }
-}
-
-pub fn ensure_bare_local(url: &Url) -> PathBuf {
+    let _guard = GitLock::acquire();
     let db = db_path(url);
 
-    let head = fs::read_to_string(db.join("HEAD"))
-        .map(|content| content.starts_with("ref"))
-        .ok();
+    if is_bare_repo(&db) {
+        fetch_bare(&db).unwrap_or_else(|err| cli::exit_with_error(err));
 
-    if let Some(head) = head
-        && head
-    {
         return db;
     }
 
-    ensure_dir(&db);
+    reset_dir(&db);
+
+    if let Err(clone_err) = clone_bare(url, &db) {
+        if is_bare_repo(&db) {
+            fetch_bare(&db).unwrap_or_else(|err| cli::exit_with_error(err));
+
+            return db;
+        }
+
+        cli::exit_with_error(clone_err);
+    }
+
+    db
+}
+
+pub fn ensure_bare_local(url: &Url) -> PathBuf {
+    let _guard = GitLock::acquire();
+    let db = db_path(url);
+
+    if is_bare_repo(&db) {
+        return db;
+    }
+
+    reset_dir(&db);
+
+    if let Err(clone_err) = clone_bare(url, &db) {
+        if is_bare_repo(&db) {
+            return db;
+        }
+
+        cli::exit_with_error(clone_err);
+    }
+
+    db
+}
+
+fn is_bare_repo(db: &Path) -> bool {
+    db.join("objects").is_dir() && db.join("refs").is_dir()
+}
+
+fn reset_dir(path: &Path) {
+    if path.exists() {
+        fs::remove_dir_all(path).unwrap_or_else(|err| {
+            cli::exit_with_error(format!(
+                "Unable to remove dir [{}]: {err}",
+                path.to_string_lossy()
+            ))
+        });
+    }
+
+    ensure_dir(path);
+}
+
+fn clone_bare(url: &Url, db: &Path) -> Result<(), String> {
+    ensure_dir(db);
 
     let output = Command::new("git")
         .arg("clone")
         .args(["--bare", "--quiet"])
         .arg(url.as_str())
-        .arg(&db)
-        .output();
+        .arg(db)
+        .output()
+        .map_err(|err| format!("Error appeared on `git` bare clone exec: {err}"))?;
 
-    match output {
-        Ok(out) => {
-            if !out.status.success() {
-                cli::exit_with_error(format!(
-                    "Bare git clone returned an error:\n{}",
-                    String::from_utf8_lossy(&out.stderr)
-                ));
-            }
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Bare git clone returned an error:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ))
+    }
+}
 
-            db
-        }
-        Err(err) => cli::exit_with_error(format!("Error appeared on `git` bare clone exec: {err}")),
+fn fetch_bare(db: &Path) -> Result<(), String> {
+    let output = Command::new("git")
+        .args(["fetch", "--quiet", "origin", "+refs/heads/*:refs/heads/*"])
+        .current_dir(db)
+        .output()
+        .map_err(|err| format!("Error appeared on `git` bare fetch exec: {err}"))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Git fetch returned an error:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        ))
     }
 }
 
 pub fn ensure_commit(db: &Path, url: &Url, commit: &str) {
+    let _guard = GitLock::acquire();
+
     let present = Command::new("git")
         .arg(format!("--git-dir={}", db.to_string_lossy()))
         .args(["cat-file", "-e", commit])
@@ -311,41 +323,52 @@ pub fn rev_parse(db: &Path, rev: impl AsRef<str>) -> String {
 }
 
 pub fn ensure_checkout(db: &Path, commit: impl AsRef<str>, dest: &Path) {
-    if !dest.is_dir() {
-        return ensure_checkout_clone(db, commit, dest);
+    let _guard = GitLock::acquire();
+
+    if let Some(head) = checkout_head(dest) {
+        if head == commit.as_ref() {
+            return;
+        }
+
+        checkout_commit(dest, commit.as_ref());
+
+        return;
     }
 
-    let rev_parse = Command::new("git")
+    reset_dir(dest);
+
+    ensure_checkout_clone(db, commit, dest);
+}
+
+fn checkout_head(dest: &Path) -> Option<String> {
+    if !dest.is_dir() {
+        return None;
+    }
+
+    let output = Command::new("git")
         .arg("-C")
         .arg(dest)
         .arg("rev-parse")
         .arg("HEAD")
         .output()
-        .unwrap_or_else(|err| {
-            cli::exit_with_error(format!("Error appeared on `git` rev-parse exec: {err}"))
-        });
+        .ok()?;
 
-    if !rev_parse.status.success() {
-        cli::exit_with_error(format!(
-            "Git rev-parse on dest [{}] returned an error:\n{}",
-            dest.to_string_lossy(),
-            String::from_utf8_lossy(&rev_parse.stderr),
-        ));
+    if !output.status.success() {
+        return None;
     }
 
-    let rev_hash = String::from_utf8_lossy(&rev_parse.stdout);
-    let rev_hash = rev_hash.trim();
+    let hash = String::from_utf8_lossy(&output.stdout).trim().to_owned();
 
-    if rev_hash == commit.as_ref() {
-        return;
-    }
+    if hash.is_empty() { None } else { Some(hash) }
+}
 
+fn checkout_commit(dest: &Path, commit: &str) {
     let checkout = Command::new("git")
         .arg("-C")
         .arg(dest)
         .arg("checkout")
         .arg("--quiet")
-        .arg(commit.as_ref())
+        .arg(commit)
         .output()
         .unwrap_or_else(|err| {
             cli::exit_with_error(format!("Error appeared on `git` checkout exec: {err}"))
@@ -405,6 +428,57 @@ fn ensure_checkout_clone(db: &Path, commit: impl AsRef<str>, dest: &Path) {
 
 // ==== helpers ====
 
+const LOCK_STALE: Duration = Duration::from_secs(600);
+
+struct GitLock {
+    path: PathBuf,
+}
+
+impl GitLock {
+    fn acquire() -> GitLock {
+        let dir = zora_git();
+
+        ensure_dir(&dir);
+
+        let path = dir.join(".lock");
+
+        loop {
+            match OpenOptions::new().write(true).create_new(true).open(&path) {
+                Ok(_) => return GitLock { path },
+                Err(err) if err.kind() == ErrorKind::AlreadyExists => {
+                    if lock_is_stale(&path) {
+                        let _ = fs::remove_file(&path);
+
+                        continue;
+                    }
+
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(err) => cli::exit_with_error(format!("Unable to acquire git lock: {err}")),
+            }
+        }
+    }
+}
+
+impl Drop for GitLock {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
+fn lock_is_stale(path: &Path) -> bool {
+    let modified = fs::metadata(path).and_then(|meta| meta.modified());
+
+    let Ok(modified) = modified else {
+        return false;
+    };
+
+    SystemTime::now()
+        .duration_since(modified)
+        .map(|age| age > LOCK_STALE)
+        .unwrap_or(false)
+}
+
 fn ensure_dir(path: &Path) {
     ensure_parent_dirs(path);
 
@@ -462,5 +536,38 @@ mod tests {
         let probed = probe_branch(&repo("https://example.com/repo"), Some(commit.to_owned()));
 
         assert_eq!(probed, commit);
+    }
+
+    #[test]
+    fn detects_bare_repository_dirs() {
+        let base = std::env::temp_dir().join(format!("zora-git-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+
+        fs::create_dir_all(base.join("objects")).unwrap();
+        fs::create_dir_all(base.join("refs")).unwrap();
+
+        assert!(is_bare_repo(&base));
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn rejects_dir_without_repo_layout() {
+        let base = std::env::temp_dir().join(format!("zora-git-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+
+        fs::create_dir_all(&base).unwrap();
+
+        assert!(!is_bare_repo(&base));
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn checkout_head_missing_dir_is_none() {
+        let path = std::env::temp_dir().join("zora-missing-checkout");
+        let _ = fs::remove_dir_all(&path);
+
+        assert!(checkout_head(&path).is_none());
     }
 }
