@@ -24,6 +24,7 @@ pub struct Package {
     pub r#type: PackageType,
 
     pub authors: Option<Vec<String>>,
+    pub description: Option<String>,
     pub repository: Option<Url>,
     pub license: Option<String>,
 }
@@ -218,5 +219,39 @@ output = "app"
 
         assert!(build.link_libs().is_empty());
         assert!(build.link_dirs().is_empty());
+    }
+
+    #[test]
+    fn package_description_parses() {
+        let text = r#"
+[package]
+name = "snake"
+version = "0.1.0"
+zeen = "^0.3.0"
+type = "bin"
+description = "a snake game"
+"#;
+
+        let manifest: Manifest = toml::from_str(text).unwrap();
+
+        assert_eq!(
+            manifest.package.description.as_deref(),
+            Some("a snake game")
+        );
+    }
+
+    #[test]
+    fn package_without_description_defaults_empty() {
+        let text = r#"
+[package]
+name = "app"
+version = "0.1.0"
+zeen = "^0.3.0"
+type = "bin"
+"#;
+
+        let manifest: Manifest = toml::from_str(text).unwrap();
+
+        assert!(manifest.package.description.is_none());
     }
 }

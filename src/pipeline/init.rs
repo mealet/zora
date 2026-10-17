@@ -30,6 +30,7 @@ fn project_init(name: impl AsRef<str>, root: &Path, is_lib: bool) {
                 manifest::PackageType::Bin
             },
             authors: None,
+            description: None,
             repository: None,
             license: None,
         },
