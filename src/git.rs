@@ -540,7 +540,7 @@ mod tests {
 
     #[test]
     fn detects_bare_repository_dirs() {
-        let base = std::env::temp_dir().join(format!("zora-git-test-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("zora-git-test-bare-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
 
         fs::create_dir_all(base.join("objects")).unwrap();
@@ -553,7 +553,8 @@ mod tests {
 
     #[test]
     fn rejects_dir_without_repo_layout() {
-        let base = std::env::temp_dir().join(format!("zora-git-test-{}", std::process::id()));
+        let base =
+            std::env::temp_dir().join(format!("zora-git-test-nonrepo-{}", std::process::id()));
         let _ = fs::remove_dir_all(&base);
 
         fs::create_dir_all(&base).unwrap();
