@@ -13,10 +13,18 @@ pub fn resolve(manifest: &Manifest) -> Lockfile {
 }
 
 pub fn resolve_reusing(manifest: &Manifest, previous: &Lockfile) -> Lockfile {
+    if previous.version != lockfile::SUPPORTED_LOCK_VERSION {
+        return resolve(manifest);
+    }
+
     resolve_with(manifest, &previous.package, None)
 }
 
 pub fn resolve_reusing_except(manifest: &Manifest, previous: &Lockfile, refresh: &str) -> Lockfile {
+    if previous.version != lockfile::SUPPORTED_LOCK_VERSION {
+        return resolve(manifest);
+    }
+
     resolve_with(manifest, &previous.package, Some(refresh))
 }
 
@@ -156,6 +164,12 @@ impl Resolver {
 
         self.stack.pop();
 
+        let (link, link_dir) = dep_manifest
+            .build
+            .as_ref()
+            .map(|build| (build.link_libs().to_vec(), build.link_dirs().to_vec()))
+            .unwrap_or_default();
+
         let node = LockPackage {
             name: key.to_owned(),
             version: dep_manifest.package.version,
@@ -164,6 +178,8 @@ impl Resolver {
             repository: Some(url.clone()),
             branch: (probed != sha).then(|| probed.clone()),
             commit: Some(sha.clone()),
+            link,
+            link_dir,
         };
 
         self.index.insert(key.to_owned(), self.nodes.len());
@@ -239,6 +255,8 @@ mod tests {
             repository: Some(Url::parse(repository).unwrap()),
             branch: branch.map(str::to_owned),
             commit: commit.map(str::to_owned),
+            link: vec![],
+            link_dir: vec![],
         }
     }
 

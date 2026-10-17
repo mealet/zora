@@ -7,7 +7,7 @@ use url::Url;
 use crate::manifest::{LoadError, Manifest};
 
 pub const LOCKFILE_CONFIG: &str = "Zora.lock";
-pub const SUPPORTED_LOCK_VERSION: u32 = 1;
+pub const SUPPORTED_LOCK_VERSION: u32 = 2;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Lockfile {
@@ -29,6 +29,11 @@ pub struct LockPackage {
     pub repository: Option<Url>,
     pub branch: Option<String>,
     pub commit: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub link: Vec<String>,
+    #[serde(rename = "link-dir", default, skip_serializing_if = "Vec::is_empty")]
+    pub link_dir: Vec<String>,
 }
 
 /// Dependency structure from format "name@rev"
@@ -187,6 +192,12 @@ pub enum LockValidateError {
 
 impl LockPackage {
     pub fn from_manifest(manifest: &Manifest) -> Self {
+        let (link, link_dir) = manifest
+            .build
+            .as_ref()
+            .map(|build| (build.link_libs().to_vec(), build.link_dirs().to_vec()))
+            .unwrap_or_default();
+
         Self {
             name: manifest.package.name.clone(),
             version: manifest.package.version.clone(),
@@ -195,6 +206,8 @@ impl LockPackage {
             repository: None,
             branch: None,
             commit: None,
+            link,
+            link_dir,
         }
     }
 }
@@ -253,5 +266,62 @@ dependencies = ["broken"]
         let parsed: Result<Lockfile, _> = toml::from_str(text);
 
         assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn from_manifest_captures_link_metadata() {
+        let text = r#"
+[package]
+name = "zaylib"
+version = "0.1.0"
+zeen = "^0.3.0"
+type = "lib/static"
+
+[build]
+output = "zaylib"
+link = ["raylib"]
+link-dir = ["vendor/lib"]
+"#;
+
+        let manifest: Manifest = toml::from_str(text).unwrap();
+        let package = LockPackage::from_manifest(&manifest);
+
+        assert_eq!(package.link, ["raylib"]);
+        assert_eq!(package.link_dir, ["vendor/lib"]);
+    }
+
+    #[test]
+    fn lockfile_roundtrips_link_metadata() {
+        let mut root = LockPackage::from_manifest(&manifest("root"));
+        root.link = vec!["raylib".to_owned()];
+        root.link_dir = vec!["libs".to_owned()];
+
+        let lockfile = Lockfile {
+            version: SUPPORTED_LOCK_VERSION,
+            package: vec![root],
+        };
+
+        let text = toml::to_string_pretty(&lockfile).unwrap();
+        assert!(text.contains("link = [\"raylib\"]"));
+        assert!(text.contains("link-dir = [\"libs\"]"));
+
+        let parsed: Lockfile = toml::from_str(&text).unwrap();
+
+        assert_eq!(parsed.package[0].link, ["raylib"]);
+        assert_eq!(parsed.package[0].link_dir, ["libs"]);
+    }
+
+    #[test]
+    fn lockfile_omits_empty_link_metadata() {
+        let root = LockPackage::from_manifest(&manifest("root"));
+
+        let lockfile = Lockfile {
+            version: SUPPORTED_LOCK_VERSION,
+            package: vec![root],
+        };
+
+        let text = toml::to_string_pretty(&lockfile).unwrap();
+
+        assert!(!text.contains("link"));
     }
 }

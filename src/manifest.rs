@@ -44,6 +44,19 @@ pub enum PackageType {
 pub struct Build {
     pub output: String,
     pub flags: Option<Vec<String>>,
+    pub link: Option<Vec<String>>,
+    #[serde(rename = "link-dir")]
+    pub link_dir: Option<Vec<String>>,
+}
+
+impl Build {
+    pub fn link_libs(&self) -> &[String] {
+        self.link.as_deref().unwrap_or(&[])
+    }
+
+    pub fn link_dirs(&self) -> &[String] {
+        self.link_dir.as_deref().unwrap_or(&[])
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,5 +171,52 @@ impl Display for LoadError {
                 Self::Toml(err) => err.to_string(),
             }
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_parses_link_fields() {
+        let text = r#"
+[package]
+name = "zaylib"
+version = "0.1.0"
+zeen = "^0.3.0"
+type = "lib/static"
+
+[build]
+output = "zaylib"
+link = ["raylib", "m"]
+link-dir = ["vendor/lib"]
+"#;
+
+        let manifest: Manifest = toml::from_str(text).unwrap();
+        let build = manifest.build.unwrap();
+
+        assert_eq!(build.link_libs(), ["raylib", "m"]);
+        assert_eq!(build.link_dirs(), ["vendor/lib"]);
+    }
+
+    #[test]
+    fn build_without_link_fields_defaults_empty() {
+        let text = r#"
+[package]
+name = "app"
+version = "0.1.0"
+zeen = "^0.3.0"
+type = "bin"
+
+[build]
+output = "app"
+"#;
+
+        let manifest: Manifest = toml::from_str(text).unwrap();
+        let build = manifest.build.unwrap();
+
+        assert!(build.link_libs().is_empty());
+        assert!(build.link_dirs().is_empty());
     }
 }

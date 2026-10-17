@@ -11,8 +11,8 @@ use crate::{
 };
 
 use super::{
-    SOURCE_DIRECTORY, TYPE_BIN_ENTRY, TYPE_LIB_ENTRY, apply_pkg_args, cmd_check, compiler_command,
-    valid_output_name,
+    SOURCE_DIRECTORY, TYPE_BIN_ENTRY, TYPE_LIB_ENTRY, apply_link_args, apply_pkg_args, cmd_check,
+    compiler_command, valid_output_name,
 };
 
 type RunArtifact = PathBuf;
@@ -97,6 +97,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
 
             compiler_cmd.arg("--mode").arg(args.mode.to_string());
             apply_pkg_args(&mut compiler_cmd, &lockfile, root);
+            apply_link_args(&mut compiler_cmd, &lockfile, root);
 
             let success = compiler_cmd.status().map(|x| x.success()).unwrap_or(false);
 
@@ -125,6 +126,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                 }
 
                 apply_pkg_args(&mut emit_command, &lockfile, root);
+                apply_link_args(&mut emit_command, &lockfile, root);
 
                 let success = emit_command
                     .status()
@@ -153,6 +155,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
             }
 
             apply_pkg_args(&mut compiler_cmd, &lockfile, root);
+            apply_link_args(&mut compiler_cmd, &lockfile, root);
 
             let success = compiler_cmd.status().map(|x| x.success()).unwrap_or(false);
 
@@ -204,6 +207,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                 }
 
                 apply_pkg_args(&mut emit_command, &lockfile, root);
+                apply_link_args(&mut emit_command, &lockfile, root);
 
                 let success = emit_command
                     .status()
@@ -232,6 +236,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
             }
 
             apply_pkg_args(&mut compiler_cmd, &lockfile, root);
+            apply_link_args(&mut compiler_cmd, &lockfile, root);
 
             let success = compiler_cmd.status().map(|x| x.success()).unwrap_or(false);
 

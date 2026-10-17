@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{LazyLock, atomic::AtomicBool},
@@ -260,6 +261,48 @@ fn apply_pkg_args(command: &mut Command, lockfile: &Lockfile, root: &Path) {
     }
 }
 
+fn apply_link_args(command: &mut Command, lockfile: &Lockfile, root: &Path) {
+    let mut seen_libs: HashSet<String> = HashSet::new();
+    let mut seen_dirs: HashSet<String> = HashSet::new();
+
+    for (index, package) in lockfile.package.iter().enumerate() {
+        let base = if index == 0 {
+            root.to_path_buf()
+        } else {
+            let Some(repository) = &package.repository else {
+                cli::exit_with_error(format!("Lock node `{}` has no repository", package.name));
+            };
+
+            let Some(commit) = &package.commit else {
+                cli::exit_with_error(format!("Lock node `{}` has no commit", package.name));
+            };
+
+            git::checkout_path(repository, commit)
+        };
+
+        for lib in &package.link {
+            if seen_libs.insert(lib.clone()) {
+                command.arg("--link").arg(lib);
+            }
+        }
+
+        for dir in &package.link_dir {
+            let path = Path::new(dir);
+            let resolved = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                base.join(path)
+            };
+
+            let rendered = resolved.to_string_lossy().into_owned();
+
+            if seen_dirs.insert(rendered.clone()) {
+                command.arg("--link-dir").arg(rendered);
+            }
+        }
+    }
+}
+
 fn dependency_sources(lockfile: &Lockfile) -> Vec<(String, PathBuf)> {
     let mut sources = Vec::new();
 
@@ -368,6 +411,29 @@ fn validate_lockfile_or_exit(lockfile: &Lockfile) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lockfile::LockPackage;
+    use semver::{Version, VersionReq};
+
+    fn root_package(link: &[&str], link_dir: &[&str]) -> LockPackage {
+        LockPackage {
+            name: "root".to_owned(),
+            version: Version::new(0, 1, 0),
+            zeen: VersionReq::parse("*").unwrap(),
+            dependencies: vec![],
+            repository: None,
+            branch: None,
+            commit: None,
+            link: link.iter().map(|value| (*value).to_owned()).collect(),
+            link_dir: link_dir.iter().map(|value| (*value).to_owned()).collect(),
+        }
+    }
+
+    fn command_args(command: &Command) -> Vec<String> {
+        command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect()
+    }
 
     #[test]
     fn output_name_accepts_plain_name() {
@@ -388,5 +454,45 @@ mod tests {
     #[test]
     fn output_name_rejects_empty() {
         assert!(!valid_output_name(""));
+    }
+
+    #[test]
+    fn link_args_dedup_and_resolve_relative_dirs() {
+        let lockfile = Lockfile {
+            version: lockfile::SUPPORTED_LOCK_VERSION,
+            package: vec![root_package(&["raylib", "m", "raylib"], &["libs", "libs"])],
+        };
+
+        let mut command = Command::new("zeen");
+        apply_link_args(&mut command, &lockfile, Path::new("/proj"));
+
+        assert_eq!(
+            command_args(&command),
+            vec![
+                "--link",
+                "raylib",
+                "--link",
+                "m",
+                "--link-dir",
+                "/proj/libs"
+            ]
+        );
+    }
+
+    #[test]
+    #[cfg(not(target_os = "windows"))]
+    fn link_args_keep_absolute_dirs() {
+        let lockfile = Lockfile {
+            version: lockfile::SUPPORTED_LOCK_VERSION,
+            package: vec![root_package(&[], &["/opt/raylib/lib"])],
+        };
+
+        let mut command = Command::new("zeen");
+        apply_link_args(&mut command, &lockfile, Path::new("/proj"));
+
+        assert_eq!(
+            command_args(&command),
+            vec!["--link-dir", "/opt/raylib/lib"]
+        );
     }
 }
