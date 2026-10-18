@@ -4,10 +4,10 @@ use semver::{Version, VersionReq};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use url::Url;
 
-use crate::manifest::{LoadError, Manifest};
+use crate::manifest::{Build, LoadError, Manifest};
 
 pub const LOCKFILE_CONFIG: &str = "Zora.lock";
-pub const SUPPORTED_LOCK_VERSION: u32 = 2;
+pub const SUPPORTED_LOCK_VERSION: u32 = 3;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Lockfile {
@@ -30,10 +30,8 @@ pub struct LockPackage {
     pub branch: Option<String>,
     pub commit: Option<String>,
 
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub link: Vec<String>,
-    #[serde(rename = "link-dir", default, skip_serializing_if = "Vec::is_empty")]
-    pub link_dir: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<Build>,
 }
 
 /// Dependency structure from format "name@rev"
@@ -192,12 +190,6 @@ pub enum LockValidateError {
 
 impl LockPackage {
     pub fn from_manifest(manifest: &Manifest) -> Self {
-        let (link, link_dir) = manifest
-            .build
-            .as_ref()
-            .map(|build| (build.link_libs().to_vec(), build.link_dirs().to_vec()))
-            .unwrap_or_default();
-
         Self {
             name: manifest.package.name.clone(),
             version: manifest.package.version.clone(),
@@ -206,8 +198,7 @@ impl LockPackage {
             repository: None,
             branch: None,
             commit: None,
-            link,
-            link_dir,
+            build: manifest.build.clone(),
         }
     }
 }
@@ -285,34 +276,56 @@ link-dir = ["vendor/lib"]
 
         let manifest: Manifest = toml::from_str(text).unwrap();
         let package = LockPackage::from_manifest(&manifest);
+        let build = package.build.unwrap();
 
-        assert_eq!(package.link, ["raylib"]);
-        assert_eq!(package.link_dir, ["vendor/lib"]);
+        assert_eq!(build.link.as_deref().unwrap(), ["raylib"]);
+        assert_eq!(build.link_dir.as_deref().unwrap(), ["vendor/lib"]);
     }
 
     #[test]
-    fn lockfile_roundtrips_link_metadata() {
-        let mut root = LockPackage::from_manifest(&manifest("root"));
-        root.link = vec!["raylib".to_owned()];
-        root.link_dir = vec!["libs".to_owned()];
+    fn lockfile_roundtrips_platform_build_spec() {
+        let text = r#"
+[package]
+name = "root"
+version = "0.1.0"
+zeen = "^0.1.0"
+type = "bin"
+
+[build]
+output = "root"
+link = ["raylib"]
+
+[build.os.linux]
+link = ["m", "pthread"]
+
+[build.target.x86_64-unknown-linux-gnu]
+link = ["rt"]
+"#;
+
+        let manifest: Manifest = toml::from_str(text).unwrap();
 
         let lockfile = Lockfile {
             version: SUPPORTED_LOCK_VERSION,
-            package: vec![root],
+            package: vec![LockPackage::from_manifest(&manifest)],
         };
 
-        let text = toml::to_string_pretty(&lockfile).unwrap();
-        assert!(text.contains("link = [\"raylib\"]"));
-        assert!(text.contains("link-dir = [\"libs\"]"));
+        let rendered = toml::to_string_pretty(&lockfile).unwrap();
+        let parsed: Lockfile = toml::from_str(&rendered).unwrap();
+        let build = parsed.package[0].build.as_ref().unwrap();
 
-        let parsed: Lockfile = toml::from_str(&text).unwrap();
-
-        assert_eq!(parsed.package[0].link, ["raylib"]);
-        assert_eq!(parsed.package[0].link_dir, ["libs"]);
+        assert_eq!(build.link.as_deref().unwrap(), ["raylib"]);
+        assert_eq!(build.os["linux"].link.as_deref().unwrap(), ["m", "pthread"]);
+        assert_eq!(
+            build.target["x86_64-unknown-linux-gnu"]
+                .link
+                .as_deref()
+                .unwrap(),
+            ["rt"]
+        );
     }
 
     #[test]
-    fn lockfile_omits_empty_link_metadata() {
+    fn lockfile_omits_empty_build_metadata() {
         let root = LockPackage::from_manifest(&manifest("root"));
 
         let lockfile = Lockfile {
@@ -322,6 +335,7 @@ link-dir = ["vendor/lib"]
 
         let text = toml::to_string_pretty(&lockfile).unwrap();
 
+        assert!(!text.contains("build"));
         assert!(!text.contains("link"));
     }
 }

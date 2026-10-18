@@ -12,6 +12,7 @@ use crate::{
     lockfile::{self, LockPackage, LockValidateError, Lockfile},
     manifest::{self, Manifest},
     resolve,
+    target::Target,
 };
 
 mod build;
@@ -274,11 +275,17 @@ fn apply_pkg_args(command: &mut Command, lockfile: &Lockfile, root: &Path) {
     }
 }
 
-fn apply_link_args(command: &mut Command, lockfile: &Lockfile, root: &Path) {
+fn apply_link_args(command: &mut Command, lockfile: &Lockfile, root: &Path, target: &Target) {
     let mut seen_libs: HashSet<String> = HashSet::new();
     let mut seen_dirs: HashSet<String> = HashSet::new();
 
     for (index, package) in lockfile.package.iter().enumerate() {
+        let Some(build) = &package.build else {
+            continue;
+        };
+
+        let resolved = build.select(target);
+
         let base = if index == 0 {
             root.to_path_buf()
         } else {
@@ -293,21 +300,21 @@ fn apply_link_args(command: &mut Command, lockfile: &Lockfile, root: &Path) {
             git::checkout_path(repository, commit)
         };
 
-        for lib in &package.link {
+        for lib in &resolved.link {
             if seen_libs.insert(lib.clone()) {
                 command.arg("--link").arg(lib);
             }
         }
 
-        for dir in &package.link_dir {
+        for dir in &resolved.link_dir {
             let path = Path::new(dir);
-            let resolved = if path.is_absolute() {
+            let resolved_dir = if path.is_absolute() {
                 path.to_path_buf()
             } else {
                 base.join(path)
             };
 
-            let rendered = resolved.to_string_lossy().into_owned();
+            let rendered = resolved_dir.to_string_lossy().into_owned();
 
             if seen_dirs.insert(rendered.clone()) {
                 command.arg("--link-dir").arg(rendered);
@@ -425,9 +432,25 @@ fn validate_lockfile_or_exit(lockfile: &Lockfile) {
 mod tests {
     use super::*;
     use crate::lockfile::LockPackage;
+    use crate::target::Target;
     use semver::{Version, VersionReq};
+    use std::collections::BTreeMap;
 
-    fn root_package(link: &[&str], link_dir: &[&str]) -> LockPackage {
+    fn link_build(link: &[&str], link_dir: &[&str]) -> manifest::Build {
+        manifest::Build {
+            output: None,
+            flags: None,
+            link: Some(link.iter().map(|value| (*value).to_owned()).collect()),
+            link_dir: Some(link_dir.iter().map(|value| (*value).to_owned()).collect()),
+            os: BTreeMap::new(),
+            arch: BTreeMap::new(),
+            env: BTreeMap::new(),
+            family: BTreeMap::new(),
+            target: BTreeMap::new(),
+        }
+    }
+
+    fn root_package(build: manifest::Build) -> LockPackage {
         LockPackage {
             name: "root".to_owned(),
             version: Version::new(0, 1, 0),
@@ -436,8 +459,7 @@ mod tests {
             repository: None,
             branch: None,
             commit: None,
-            link: link.iter().map(|value| (*value).to_owned()).collect(),
-            link_dir: link_dir.iter().map(|value| (*value).to_owned()).collect(),
+            build: Some(build),
         }
     }
 
@@ -473,11 +495,14 @@ mod tests {
     fn link_args_dedup_and_resolve_relative_dirs() {
         let lockfile = Lockfile {
             version: lockfile::SUPPORTED_LOCK_VERSION,
-            package: vec![root_package(&["raylib", "m", "raylib"], &["libs", "libs"])],
+            package: vec![root_package(link_build(
+                &["raylib", "m", "raylib"],
+                &["libs", "libs"],
+            ))],
         };
 
         let mut command = Command::new("zeen");
-        apply_link_args(&mut command, &lockfile, Path::new("/proj"));
+        apply_link_args(&mut command, &lockfile, Path::new("/proj"), &Target::host());
 
         assert_eq!(
             command_args(&command),
@@ -497,15 +522,58 @@ mod tests {
     fn link_args_keep_absolute_dirs() {
         let lockfile = Lockfile {
             version: lockfile::SUPPORTED_LOCK_VERSION,
-            package: vec![root_package(&[], &["/opt/raylib/lib"])],
+            package: vec![root_package(link_build(&[], &["/opt/raylib/lib"]))],
         };
 
         let mut command = Command::new("zeen");
-        apply_link_args(&mut command, &lockfile, Path::new("/proj"));
+        apply_link_args(&mut command, &lockfile, Path::new("/proj"), &Target::host());
 
         assert_eq!(
             command_args(&command),
             vec!["--link-dir", "/opt/raylib/lib"]
         );
+    }
+
+    #[test]
+    fn link_args_select_platform_override() {
+        let mut spec = link_build(&["base"], &[]);
+
+        spec.os.insert(
+            "linux".to_owned(),
+            manifest::BuildOverride {
+                output: None,
+                flags: None,
+                link: Some(vec!["m".to_owned(), "pthread".to_owned()]),
+                link_dir: None,
+            },
+        );
+
+        let lockfile = Lockfile {
+            version: lockfile::SUPPORTED_LOCK_VERSION,
+            package: vec![root_package(spec)],
+        };
+
+        let mut linux = Command::new("zeen");
+        apply_link_args(
+            &mut linux,
+            &lockfile,
+            Path::new("/proj"),
+            &Target::parse("x86_64-unknown-linux-gnu"),
+        );
+
+        assert_eq!(
+            command_args(&linux),
+            vec!["--link", "m", "--link", "pthread"]
+        );
+
+        let mut windows = Command::new("zeen");
+        apply_link_args(
+            &mut windows,
+            &lockfile,
+            Path::new("/proj"),
+            &Target::parse("x86_64-pc-windows-msvc"),
+        );
+
+        assert_eq!(command_args(&windows), vec!["--link", "base"]);
     }
 }

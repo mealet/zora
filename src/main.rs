@@ -8,6 +8,7 @@ mod lockfile;
 mod manifest;
 mod pipeline;
 mod resolve;
+mod target;
 mod tests;
 
 fn main() {

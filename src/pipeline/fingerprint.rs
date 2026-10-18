@@ -1,8 +1,8 @@
-use std::{fs, io::ErrorKind, path::Path};
 use sha2::{Digest, Sha256};
+use std::{fs, io::ErrorKind, path::Path};
 
-use crate::{cli, fsio, lockfile::LOCKFILE_CONFIG, manifest::MANIFEST_CONFIG};
 use super::SOURCE_DIRECTORY;
+use crate::{cli, fsio, lockfile::LOCKFILE_CONFIG, manifest::MANIFEST_CONFIG};
 
 pub const FINGERPRINT_FILE: &str = ".zora-fingerprint";
 const FINGERPRINT_SCHEMA: &str = "zora-fingerprint-1";
@@ -159,7 +159,7 @@ mod tests {
         )
         .unwrap();
 
-        fs::write(path.join(LOCKFILE_CONFIG), "version = 2\n").unwrap();
+        fs::write(path.join(LOCKFILE_CONFIG), "version = 3\n").unwrap();
 
         path
     }
@@ -287,7 +287,7 @@ mod tests {
 
         assert_ne!(first, second);
 
-        fs::write(root.join(LOCKFILE_CONFIG), "version = 2\n\n").unwrap();
+        fs::write(root.join(LOCKFILE_CONFIG), "version = 3\n\n").unwrap();
 
         let third = compute(&root, &base_inputs("0.3.0", "Debug"));
 

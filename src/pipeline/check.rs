@@ -41,16 +41,24 @@ pub fn cmd_check(manifest: &Manifest, root: &Path, avoid_execution: bool) -> Loc
     // Build section checks
 
     if let Some(ref build_section) = manifest.build {
-        if !valid_output_name(&build_section.output) {
+        if let Some(ref output) = build_section.output
+            && !valid_output_name(output)
+        {
             cli::exit_with_error("Field `[build].output` should have only name without extension");
         }
 
-        if let Some(ref flags) = build_section.flags {
-            flags.iter().for_each(|flag| {
-                if !AVAILABLE_BUILD_FLAGS.contains(&flag.as_str()) {
-                    cli::exit_with_error(format!("Field `[build].flags` doesn't have '{}'", flag));
-                }
-            });
+        validate_flags(build_section.flags.as_deref());
+
+        for over in build_section.overrides() {
+            if let Some(ref output) = over.output
+                && !valid_output_name(output)
+            {
+                cli::exit_with_error(
+                    "Field `[build].output` should have only name without extension",
+                );
+            }
+
+            validate_flags(over.flags.as_deref());
         }
     }
 
@@ -81,4 +89,16 @@ pub fn cmd_check(manifest: &Manifest, root: &Path, avoid_execution: bool) -> Loc
     }
 
     lockfile
+}
+
+fn validate_flags(flags: Option<&[String]>) {
+    let Some(flags) = flags else {
+        return;
+    };
+
+    flags.iter().for_each(|flag| {
+        if !AVAILABLE_BUILD_FLAGS.contains(&flag.as_str()) {
+            cli::exit_with_error(format!("Field `[build].flags` doesn't have '{}'", flag));
+        }
+    });
 }

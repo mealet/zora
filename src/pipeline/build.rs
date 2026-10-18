@@ -8,6 +8,7 @@ use crate::{
     cli::{self, CompilationMode},
     link,
     manifest::{Manifest, PackageType},
+    target::Target,
 };
 
 use super::{
@@ -55,24 +56,22 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
     });
 
     // output file name and flags
-    let (output_name, compiler_flags) = if let Some(build) = &manifest.build {
-        (build.output.clone(), build.flags.clone().unwrap_or(vec![]))
-    } else {
-        let name = manifest.package.name.trim().to_string();
+    let target = Target::resolve(args.target.as_deref());
 
-        if !valid_output_name(&name) {
-            cli::exit_with_error(format!(
-                "Package name `{name}` is not a valid output name, rename the package or set `[build].output`"
-            ));
+    let (output_name, compiler_flags) = match manifest.build.as_ref() {
+        Some(build) => {
+            let selected = build.select(&target);
+
+            (
+                selected
+                    .output
+                    .unwrap_or_else(|| default_output_name(manifest)),
+                selected.flags,
+            )
         }
-
-        (name, vec![])
+        None => (default_output_name(manifest), Vec::new()),
     };
-    let windows_target = args
-        .target
-        .as_deref()
-        .map(|target| target.contains("windows"))
-        .unwrap_or(cfg!(target_os = "windows"));
+    let windows_target = target.is_windows();
 
     let output_path = output_dir.join(match manifest.package.r#type {
         PackageType::Bin if windows_target => format!("{output_name}.exe"),
@@ -134,7 +133,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
 
             compiler_cmd.arg("--mode").arg(args.mode.to_string());
             apply_pkg_args(&mut compiler_cmd, &lockfile, root);
-            apply_link_args(&mut compiler_cmd, &lockfile, root);
+            apply_link_args(&mut compiler_cmd, &lockfile, root, &target);
 
             let success = compiler_cmd.status().map(|x| x.success()).unwrap_or(false);
 
@@ -165,7 +164,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                 }
 
                 apply_pkg_args(&mut emit_command, &lockfile, root);
-                apply_link_args(&mut emit_command, &lockfile, root);
+                apply_link_args(&mut emit_command, &lockfile, root, &target);
 
                 let success = emit_command
                     .status()
@@ -196,7 +195,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
             }
 
             apply_pkg_args(&mut compiler_cmd, &lockfile, root);
-            apply_link_args(&mut compiler_cmd, &lockfile, root);
+            apply_link_args(&mut compiler_cmd, &lockfile, root, &target);
 
             let success = compiler_cmd.status().map(|x| x.success()).unwrap_or(false);
 
@@ -250,7 +249,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                 }
 
                 apply_pkg_args(&mut emit_command, &lockfile, root);
-                apply_link_args(&mut emit_command, &lockfile, root);
+                apply_link_args(&mut emit_command, &lockfile, root, &target);
 
                 let success = emit_command
                     .status()
@@ -281,7 +280,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
             }
 
             apply_pkg_args(&mut compiler_cmd, &lockfile, root);
-            apply_link_args(&mut compiler_cmd, &lockfile, root);
+            apply_link_args(&mut compiler_cmd, &lockfile, root, &target);
 
             let success = compiler_cmd.status().map(|x| x.success()).unwrap_or(false);
 
@@ -317,6 +316,18 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
             None
         }
     }
+}
+
+fn default_output_name(manifest: &Manifest) -> String {
+    let name = manifest.package.name.trim().to_string();
+
+    if !valid_output_name(&name) {
+        cli::exit_with_error(format!(
+            "Package name `{name}` is not a valid output name, rename the package or set `[build].output`"
+        ));
+    }
+
+    name
 }
 
 fn build_artifact_path(

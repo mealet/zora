@@ -1,12 +1,14 @@
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fmt::Display,
     fs, io,
     path::{Path, PathBuf},
 };
 use url::Url;
+
+use crate::target::Target;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
@@ -43,20 +45,89 @@ pub enum PackageType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Build {
-    pub output: String,
+    pub output: Option<String>,
+    pub flags: Option<Vec<String>>,
+    pub link: Option<Vec<String>>,
+    #[serde(rename = "link-dir")]
+    pub link_dir: Option<Vec<String>>,
+
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub os: BTreeMap<String, BuildOverride>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub arch: BTreeMap<String, BuildOverride>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, BuildOverride>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub family: BTreeMap<String, BuildOverride>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub target: BTreeMap<String, BuildOverride>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildOverride {
+    pub output: Option<String>,
     pub flags: Option<Vec<String>>,
     pub link: Option<Vec<String>>,
     #[serde(rename = "link-dir")]
     pub link_dir: Option<Vec<String>>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ResolvedBuild {
+    pub output: Option<String>,
+    pub flags: Vec<String>,
+    pub link: Vec<String>,
+    pub link_dir: Vec<String>,
+}
+
 impl Build {
-    pub fn link_libs(&self) -> &[String] {
-        self.link.as_deref().unwrap_or(&[])
+    pub fn select(&self, target: &Target) -> ResolvedBuild {
+        if let Some(over) = self.target.get(&target.triple) {
+            return over.resolved();
+        }
+
+        if let Some(over) = self.arch.get(&target.arch) {
+            return over.resolved();
+        }
+
+        if let Some(over) = self.env.get(&target.env) {
+            return over.resolved();
+        }
+
+        if let Some(over) = self.os.get(&target.os) {
+            return over.resolved();
+        }
+
+        if let Some(over) = self.family.get(&target.family) {
+            return over.resolved();
+        }
+
+        ResolvedBuild {
+            output: self.output.clone(),
+            flags: self.flags.clone().unwrap_or_default(),
+            link: self.link.clone().unwrap_or_default(),
+            link_dir: self.link_dir.clone().unwrap_or_default(),
+        }
     }
 
-    pub fn link_dirs(&self) -> &[String] {
-        self.link_dir.as_deref().unwrap_or(&[])
+    pub fn overrides(&self) -> impl Iterator<Item = &BuildOverride> {
+        self.os
+            .values()
+            .chain(self.arch.values())
+            .chain(self.env.values())
+            .chain(self.family.values())
+            .chain(self.target.values())
+    }
+}
+
+impl BuildOverride {
+    fn resolved(&self) -> ResolvedBuild {
+        ResolvedBuild {
+            output: self.output.clone(),
+            flags: self.flags.clone().unwrap_or_default(),
+            link: self.link.clone().unwrap_or_default(),
+            link_dir: self.link_dir.clone().unwrap_or_default(),
+        }
     }
 }
 
@@ -178,6 +249,7 @@ impl Display for LoadError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::target::Target;
 
     #[test]
     fn build_parses_link_fields() {
@@ -197,8 +269,9 @@ link-dir = ["vendor/lib"]
         let manifest: Manifest = toml::from_str(text).unwrap();
         let build = manifest.build.unwrap();
 
-        assert_eq!(build.link_libs(), ["raylib", "m"]);
-        assert_eq!(build.link_dirs(), ["vendor/lib"]);
+        assert_eq!(build.output.as_deref(), Some("zaylib"));
+        assert_eq!(build.link.as_deref().unwrap(), ["raylib", "m"]);
+        assert_eq!(build.link_dir.as_deref().unwrap(), ["vendor/lib"]);
     }
 
     #[test]
@@ -217,8 +290,98 @@ output = "app"
         let manifest: Manifest = toml::from_str(text).unwrap();
         let build = manifest.build.unwrap();
 
-        assert!(build.link_libs().is_empty());
-        assert!(build.link_dirs().is_empty());
+        assert!(build.link.is_none());
+        assert!(build.link_dir.is_none());
+    }
+
+    #[test]
+    fn build_platform_override_replaces_base() {
+        let text = r#"
+[package]
+name = "app"
+version = "0.1.0"
+zeen = "^0.4.0"
+type = "bin"
+
+[build]
+output = "app"
+link = ["base"]
+
+[build.os.linux]
+link = ["m", "pthread"]
+"#;
+
+        let manifest: Manifest = toml::from_str(text).unwrap();
+        let build = manifest.build.unwrap();
+
+        let linux = build.select(&Target::parse("x86_64-unknown-linux-gnu"));
+        assert_eq!(linux.link, ["m", "pthread"]);
+        assert_eq!(linux.output.as_deref(), None);
+
+        let windows = build.select(&Target::parse("x86_64-pc-windows-msvc"));
+        assert_eq!(windows.link, ["base"]);
+        assert_eq!(windows.output.as_deref(), Some("app"));
+    }
+
+    #[test]
+    fn build_prefers_more_specific_selector() {
+        let text = r#"
+[package]
+name = "app"
+version = "0.1.0"
+zeen = "^0.4.0"
+type = "bin"
+
+[build]
+output = "app"
+
+[build.os.linux]
+link = ["linux"]
+
+[build.arch.x86_64]
+link = ["x86_64"]
+
+[build.target.x86_64-unknown-linux-gnu]
+link = ["triple"]
+"#;
+
+        let manifest: Manifest = toml::from_str(text).unwrap();
+        let build = manifest.build.unwrap();
+
+        let exact = build.select(&Target::parse("x86_64-unknown-linux-gnu"));
+        assert_eq!(exact.link, ["triple"]);
+
+        let by_arch = build.select(&Target::parse("x86_64-pc-windows-msvc"));
+        assert_eq!(by_arch.link, ["x86_64"]);
+
+        let by_os = build.select(&Target::parse("aarch64-unknown-linux-gnu"));
+        assert_eq!(by_os.link, ["linux"]);
+    }
+
+    #[test]
+    fn build_selects_family_override() {
+        let text = r#"
+[package]
+name = "app"
+version = "0.1.0"
+zeen = "^0.4.0"
+type = "bin"
+
+[build]
+output = "app"
+
+[build.family.unix]
+link = ["m", "pthread", "dl"]
+"#;
+
+        let manifest: Manifest = toml::from_str(text).unwrap();
+        let build = manifest.build.unwrap();
+
+        let android = build.select(&Target::parse("aarch64-linux-android"));
+        assert_eq!(android.link, ["m", "pthread", "dl"]);
+
+        let windows = build.select(&Target::parse("x86_64-pc-windows-msvc"));
+        assert!(windows.link.is_empty());
     }
 
     #[test]

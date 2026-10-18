@@ -164,12 +164,6 @@ impl Resolver {
 
         self.stack.pop();
 
-        let (link, link_dir) = dep_manifest
-            .build
-            .as_ref()
-            .map(|build| (build.link_libs().to_vec(), build.link_dirs().to_vec()))
-            .unwrap_or_default();
-
         let node = LockPackage {
             name: key.to_owned(),
             version: dep_manifest.package.version,
@@ -178,8 +172,7 @@ impl Resolver {
             repository: Some(url.clone()),
             branch: (probed != sha).then(|| probed.clone()),
             commit: Some(sha.clone()),
-            link,
-            link_dir,
+            build: dep_manifest.build.clone(),
         };
 
         self.index.insert(key.to_owned(), self.nodes.len());
@@ -255,8 +248,7 @@ mod tests {
             repository: Some(Url::parse(repository).unwrap()),
             branch: branch.map(str::to_owned),
             commit: commit.map(str::to_owned),
-            link: vec![],
-            link_dir: vec![],
+            build: None,
         }
     }
 
