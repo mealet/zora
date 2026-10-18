@@ -9,7 +9,7 @@ use semver::{Version, VersionReq};
 
 use crate::{
     cli, git,
-    lockfile::{self, LockValidateError, Lockfile},
+    lockfile::{self, LockPackage, LockValidateError, Lockfile},
     manifest::{self, Manifest},
     resolve,
 };
@@ -18,6 +18,7 @@ mod build;
 mod check;
 mod clean;
 mod deps;
+mod fingerprint;
 mod init;
 mod test_cmd;
 
@@ -199,6 +200,43 @@ fn compiler_command(src_dir: &Path) -> Command {
     command
 }
 
+fn ensure_dependency_checkout(package: &LockPackage) -> PathBuf {
+    let Some(repository) = &package.repository else {
+        cli::exit_with_error(format!("Lock node `{}` has no repository", package.name));
+    };
+
+    let Some(commit) = &package.commit else {
+        cli::exit_with_error(format!("Lock node `{}` has no commit", package.name));
+    };
+
+    let db = git::ensure_bare_local(repository);
+    git::ensure_commit(&db, repository, commit);
+
+    let dest = git::checkout_path(repository, commit);
+    let fresh = !dest.exists();
+
+    git::ensure_checkout(&db, commit, &dest);
+
+    if fresh {
+        cli::println_info(
+            "Checkout",
+            format!(
+                "installed: `{}@{}`",
+                package.name,
+                commit.get(..9).unwrap_or(commit)
+            ),
+        );
+    }
+
+    dest
+}
+
+fn ensure_dependencies(lockfile: &Lockfile) {
+    for package in lockfile.package.iter().skip(1) {
+        ensure_dependency_checkout(package);
+    }
+}
+
 fn apply_pkg_args(command: &mut Command, lockfile: &Lockfile, root: &Path) {
     let Some(project) = lockfile.package.first() else {
         cli::exit_with_error("Lockfile has no root package");
@@ -218,32 +256,7 @@ fn apply_pkg_args(command: &mut Command, lockfile: &Lockfile, root: &Path) {
             ));
         }
 
-        let Some(repository) = &package.repository else {
-            cli::exit_with_error(format!("Lock node `{}` has no repository", package.name));
-        };
-
-        let Some(commit) = &package.commit else {
-            cli::exit_with_error(format!("Lock node `{}` has no commit", package.name));
-        };
-
-        let db = git::ensure_bare_local(repository);
-        git::ensure_commit(&db, repository, commit);
-
-        let dest = git::checkout_path(repository, commit);
-        let fresh = !dest.exists();
-        git::ensure_checkout(&db, commit, &dest);
-
-        if fresh {
-            cli::println_info(
-                "Checkout",
-                format!(
-                    "installed: `{}@{}`",
-                    package.name,
-                    commit.get(..9).unwrap_or(commit)
-                ),
-            );
-        }
-
+        let dest = ensure_dependency_checkout(package);
         let src = dest.join(SOURCE_DIRECTORY);
 
         if !src.is_dir() {

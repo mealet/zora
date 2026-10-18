@@ -12,7 +12,7 @@ use crate::{
 
 use super::{
     SOURCE_DIRECTORY, TYPE_BIN_ENTRY, TYPE_LIB_ENTRY, apply_link_args, apply_pkg_args, cmd_check,
-    compiler_command, valid_output_name,
+    compiler_command, ensure_dependencies, fingerprint, valid_output_name,
 };
 
 type RunArtifact = PathBuf;
@@ -79,6 +79,43 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
         _ => output_name.clone(),
     });
 
+    let artifact_path = build_artifact_path(
+        &manifest.package.r#type,
+        &args,
+        &output_dir,
+        &output_path,
+        &output_name,
+        windows_target,
+    );
+
+    let fingerprint_path = output_dir.join(fingerprint::FINGERPRINT_FILE);
+    let compiler_version = super::ZEEN_VERSION.0.to_string();
+    let mode = args.mode.to_string();
+    let emit = args.emit.map(|emit| emit.to_string());
+    let current_fingerprint = fingerprint::compute(
+        root,
+        &fingerprint::BuildInputs {
+            compiler_version: &compiler_version,
+            mode: &mode,
+            target: args.target.as_deref(),
+            emit: emit.as_deref(),
+        },
+    );
+
+    if fingerprint::is_current(&fingerprint_path, &current_fingerprint, &artifact_path) {
+        ensure_dependencies(&lockfile);
+
+        cli::println_info(
+            "Finished",
+            format!("`{}` (cached)", artifact_path.to_string_lossy()),
+        );
+
+        return match manifest.package.r#type {
+            PackageType::Bin => Some(output_path),
+            PackageType::Static | PackageType::Dynamic => None,
+        };
+    }
+
     let src_dir = root.join(SOURCE_DIRECTORY);
     let mut compiler_cmd = compiler_command(&src_dir);
 
@@ -104,6 +141,8 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
             if !success {
                 std::process::exit(1);
             }
+
+            fingerprint::store(&fingerprint_path, &current_fingerprint);
 
             Some(output_path)
         }
@@ -136,6 +175,8 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                 if !success {
                     std::process::exit(1);
                 }
+
+                fingerprint::store(&fingerprint_path, &current_fingerprint);
 
                 cli::println_info("Emitted", format!("{}", output_path.to_string_lossy()));
 
@@ -181,6 +222,8 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                 triple,
             );
 
+            fingerprint::store(&fingerprint_path, &current_fingerprint);
+
             cli::println_info(
                 "Archived",
                 format!("static library: `{}`", archived.to_string_lossy()),
@@ -217,6 +260,8 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                 if !success {
                     std::process::exit(1);
                 }
+
+                fingerprint::store(&fingerprint_path, &current_fingerprint);
 
                 cli::println_info("Emitted", format!("{}", output_path.to_string_lossy()));
 
@@ -262,6 +307,8 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                 triple,
             );
 
+            fingerprint::store(&fingerprint_path, &current_fingerprint);
+
             cli::println_info(
                 "Linked",
                 format!("dynamic library: `{}`", linked.to_string_lossy()),
@@ -269,6 +316,48 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
 
             None
         }
+    }
+}
+
+fn build_artifact_path(
+    package_type: &PackageType,
+    args: &cli::BuildArgs,
+    output_dir: &Path,
+    output_path: &Path,
+    output_name: &str,
+    windows_target: bool,
+) -> PathBuf {
+    match package_type {
+        PackageType::Bin => output_path.to_path_buf(),
+        PackageType::Static => match args.emit {
+            Some(emit) => emitted_artifact_path(output_path, emit, windows_target),
+            None => output_dir.join(link::static_library_name(
+                output_name,
+                args.target.as_deref(),
+            )),
+        },
+        PackageType::Dynamic => match args.emit {
+            Some(emit) => emitted_artifact_path(output_path, emit, windows_target),
+            None => output_dir.join(link::dynamic_library_name(
+                output_name,
+                args.target.as_deref(),
+            )),
+        },
+    }
+}
+
+fn emitted_artifact_path(
+    output_path: &Path,
+    emit: cli::CompilationOutput,
+    windows_target: bool,
+) -> PathBuf {
+    match emit {
+        cli::CompilationOutput::Binary => output_path.to_path_buf(),
+        cli::CompilationOutput::Object => {
+            output_path.with_extension(if windows_target { "obj" } else { "o" })
+        }
+        cli::CompilationOutput::EmitIR => output_path.with_extension("ll"),
+        cli::CompilationOutput::EmitMIR => output_path.with_extension("mir"),
     }
 }
 
@@ -295,4 +384,78 @@ pub fn cmd_run(args: cli::RunArgs, manifest: &Manifest, root: &Path) {
         .unwrap_or_else(|err| cli::exit_with_error(format!("Build execution failed: {}", err)));
 
     std::process::exit(cmd.code().unwrap_or(1));
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    fn build_args(target: Option<&str>, emit: Option<cli::CompilationOutput>) -> cli::BuildArgs {
+        cli::BuildArgs {
+            mode: cli::CompilationMode::Debug,
+            target: target.map(str::to_owned),
+            emit,
+        }
+    }
+
+    #[test]
+    fn binary_artifact_is_the_output_file() {
+        let directory = PathBuf::from("/project/dist/debug");
+        let output = directory.join("app");
+
+        let artifact = build_artifact_path(
+            &PackageType::Bin,
+            &build_args(None, Some(cli::CompilationOutput::EmitIR)),
+            &directory,
+            &output,
+            "app",
+            false,
+        );
+
+        assert_eq!(artifact, output);
+    }
+
+    #[test]
+    fn static_artifact_is_the_archive() {
+        let directory = PathBuf::from("/project/dist/debug");
+        let output = directory.join("app");
+
+        let artifact = build_artifact_path(
+            &PackageType::Static,
+            &build_args(None, None),
+            &directory,
+            &output,
+            "app",
+            false,
+        );
+
+        assert_eq!(artifact, directory.join("libapp.a"));
+    }
+
+    #[test]
+    fn emitted_artifacts_follow_compiler_extensions() {
+        let output = PathBuf::from("/project/dist/debug/app");
+
+        assert_eq!(
+            emitted_artifact_path(&output, cli::CompilationOutput::EmitIR, false),
+            PathBuf::from("/project/dist/debug/app.ll")
+        );
+
+        assert_eq!(
+            emitted_artifact_path(&output, cli::CompilationOutput::Object, false),
+            PathBuf::from("/project/dist/debug/app.o")
+        );
+
+        assert_eq!(
+            emitted_artifact_path(&output, cli::CompilationOutput::Object, true),
+            PathBuf::from("/project/dist/debug/app.obj")
+        );
+
+        assert_eq!(
+            emitted_artifact_path(&output, cli::CompilationOutput::EmitMIR, false),
+            PathBuf::from("/project/dist/debug/app.mir")
+        );
+    }
 }
