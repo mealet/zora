@@ -138,3 +138,221 @@ fn read_source(path: &Path) -> Vec<u8> {
         ))
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    fn workspace(name: &str) -> PathBuf {
+        let path =
+            std::env::temp_dir().join(format!("zora-fingerprint-{name}-{}", std::process::id()));
+
+        let _ = fs::remove_dir_all(&path);
+
+        fs::create_dir_all(path.join(SOURCE_DIRECTORY)).unwrap();
+
+        fs::write(
+            path.join(MANIFEST_CONFIG),
+            "[package]\nname = \"app\"\n\n[build]\noutput = \"app\"\n",
+        )
+        .unwrap();
+
+        fs::write(path.join(LOCKFILE_CONFIG), "version = 2\n").unwrap();
+
+        path
+    }
+
+    fn base_inputs<'a>(version: &'a str, mode: &'a str) -> BuildInputs<'a> {
+        BuildInputs {
+            compiler_version: version,
+            mode,
+            target: None,
+            emit: None,
+        }
+    }
+
+    fn write_source(root: &Path, name: &str, contents: &str) {
+        let path = root.join(SOURCE_DIRECTORY).join(name);
+
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+
+        fs::write(path, contents).unwrap();
+    }
+
+    #[test]
+    fn fingerprint_is_stable_for_unchanged_sources() {
+        let root = workspace("stable");
+
+        write_source(&root, "main.zn", "fn main() {}");
+
+        let first = compute(&root, &base_inputs("0.3.0", "Debug"));
+        let second = compute(&root, &base_inputs("0.3.0", "Debug"));
+
+        assert_eq!(first, second);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn fingerprint_ignores_timestamps() {
+        let root = workspace("timestamps");
+
+        write_source(&root, "main.zn", "fn main() {}");
+
+        let first = compute(&root, &base_inputs("0.3.0", "Debug"));
+
+        write_source(&root, "main.zn", "fn main() {}");
+
+        let second = compute(&root, &base_inputs("0.3.0", "Debug"));
+
+        assert_eq!(first, second);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn fingerprint_changes_with_source_contents() {
+        let root = workspace("contents");
+
+        write_source(&root, "main.zn", "fn main() {}");
+
+        let first = compute(&root, &base_inputs("0.3.0", "Debug"));
+
+        write_source(&root, "main.zn", "fn main() { other(); }");
+
+        let second = compute(&root, &base_inputs("0.3.0", "Debug"));
+
+        assert_ne!(first, second);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn fingerprint_changes_with_source_paths() {
+        let root = workspace("paths");
+
+        write_source(&root, "main.zn", "fn main() {}");
+
+        let first = compute(&root, &base_inputs("0.3.0", "Debug"));
+
+        fs::rename(
+            root.join(SOURCE_DIRECTORY).join("main.zn"),
+            root.join(SOURCE_DIRECTORY).join("entry.zn"),
+        )
+        .unwrap();
+
+        let second = compute(&root, &base_inputs("0.3.0", "Debug"));
+
+        assert_ne!(first, second);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn fingerprint_changes_with_nested_source() {
+        let root = workspace("nested");
+
+        write_source(&root, "main.zn", "fn main() {}");
+
+        let first = compute(&root, &base_inputs("0.3.0", "Debug"));
+
+        write_source(&root, "nested/other.zn", "pub fn other() {}");
+
+        let second = compute(&root, &base_inputs("0.3.0", "Debug"));
+
+        assert_ne!(first, second);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn fingerprint_changes_with_manifest_and_lockfile() {
+        let root = workspace("manifests");
+
+        write_source(&root, "main.zn", "fn main() {}");
+
+        let first = compute(&root, &base_inputs("0.3.0", "Debug"));
+
+        fs::write(
+            root.join(MANIFEST_CONFIG),
+            "[package]\nname = \"other\"\n\n[build]\noutput = \"other\"\n",
+        )
+        .unwrap();
+
+        let second = compute(&root, &base_inputs("0.3.0", "Debug"));
+
+        assert_ne!(first, second);
+
+        fs::write(root.join(LOCKFILE_CONFIG), "version = 2\n\n").unwrap();
+
+        let third = compute(&root, &base_inputs("0.3.0", "Debug"));
+
+        assert_ne!(second, third);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn fingerprint_changes_with_build_context() {
+        let root = workspace("context");
+
+        write_source(&root, "main.zn", "fn main() {}");
+
+        let debug = compute(&root, &base_inputs("0.3.0", "Debug"));
+        let release = compute(&root, &base_inputs("0.3.0", "Release"));
+
+        assert_ne!(debug, release);
+
+        let newer_compiler = compute(&root, &base_inputs("0.4.0", "Debug"));
+
+        assert_ne!(debug, newer_compiler);
+
+        let cross = compute(
+            &root,
+            &BuildInputs {
+                compiler_version: "0.3.0",
+                mode: "Debug",
+                target: Some("x86_64-pc-windows-gnu"),
+                emit: None,
+            },
+        );
+
+        assert_ne!(debug, cross);
+
+        let emitted = compute(
+            &root,
+            &BuildInputs {
+                compiler_version: "0.3.0",
+                mode: "Debug",
+                target: None,
+                emit: Some("IR"),
+            },
+        );
+
+        assert_ne!(debug, emitted);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn current_requires_matching_fingerprint_and_artifact() {
+        let root = workspace("current");
+        let fingerprint_path = root.join(FINGERPRINT_FILE);
+        let artifact_path = root.join("app");
+
+        store(&fingerprint_path, "abc");
+
+        assert!(!is_current(&fingerprint_path, "abc", &artifact_path));
+
+        fs::write(&artifact_path, "binary").unwrap();
+
+        assert!(is_current(&fingerprint_path, "abc", &artifact_path));
+        assert!(!is_current(&fingerprint_path, "def", &artifact_path));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+}
