@@ -78,12 +78,36 @@ pub struct NewArgs {
     pub library: bool,
 }
 
+#[derive(Debug, Args)]
+pub struct ModeArgs {
+    /// `-m --mode`
+    #[arg(short, long, value_enum, default_value_t = CompilationMode::Debug, conflicts_with_all = ["release", "debug"], help="Specify compilation mode")]
+    pub mode: CompilationMode,
+
+    #[arg(long, conflicts_with_all = ["mode", "debug"], help = "Compile the project in release mode")]
+    pub release: bool,
+
+    #[arg(long, conflicts_with_all = ["mode", "release"], help = "Compile the project in debug mode")]
+    pub debug: bool,
+}
+
+impl ModeArgs {
+    pub fn resolve(&self) -> CompilationMode {
+        if self.release {
+            CompilationMode::Release
+        } else if self.debug {
+            CompilationMode::Debug
+        } else {
+            self.mode
+        }
+    }
+}
+
 /// `zora build` args
 #[derive(Debug, Args)]
 pub struct BuildArgs {
-    /// `-m --mode`
-    #[arg(short, long, value_enum, default_value_t = CompilationMode::Debug, help="Specify compilation mode")]
-    pub mode: CompilationMode,
+    #[command(flatten)]
+    pub mode: ModeArgs,
 
     /// `--target`
     #[arg(
@@ -105,7 +129,7 @@ pub struct CleanArgs {
     pub global: bool,
 }
 
-#[derive(Debug, Default, Clone, Copy, ValueEnum)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum CompilationMode {
     #[value(name = "Debug")]
     #[default]
@@ -159,9 +183,8 @@ impl std::fmt::Display for CompilationOutput {
 /// `zora run` args
 #[derive(Debug, Args)]
 pub struct RunArgs {
-    /// `-m --mode`
-    #[arg(short, long, value_enum, default_value_t = CompilationMode::Debug, help="Specify compilation mode")]
-    pub mode: CompilationMode,
+    #[command(flatten)]
+    pub mode: ModeArgs,
 
     #[arg(last = true, value_name = "ARGS")]
     pub program_args: Vec<String>,
@@ -205,4 +228,87 @@ pub fn println_info(prefix: impl Display, message: impl Display) {
 
 pub fn println_basic(message: impl Display) {
     println!("{}", message);
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::*;
+
+    fn resolved_mode(command: &Commands) -> CompilationMode {
+        match command {
+            Commands::Build(args) => args.mode.resolve(),
+            Commands::Run(args) => args.mode.resolve(),
+            _ => panic!("command carries no compilation mode"),
+        }
+    }
+
+    #[test]
+    fn build_defaults_to_debug_mode() {
+        let cli = Cli::parse_from(["zora", "build"]);
+
+        assert_eq!(resolved_mode(&cli.command), CompilationMode::Debug);
+    }
+
+    #[test]
+    fn build_release_flag_selects_release_mode() {
+        let cli = Cli::parse_from(["zora", "build", "--release"]);
+
+        assert_eq!(resolved_mode(&cli.command), CompilationMode::Release);
+    }
+
+    #[test]
+    fn build_debug_flag_selects_debug_mode() {
+        let cli = Cli::parse_from(["zora", "build", "--debug"]);
+
+        assert_eq!(resolved_mode(&cli.command), CompilationMode::Debug);
+    }
+
+    #[test]
+    fn build_mode_flag_still_selects_mode() {
+        let cli = Cli::parse_from(["zora", "build", "--mode", "Release"]);
+
+        assert_eq!(resolved_mode(&cli.command), CompilationMode::Release);
+    }
+
+    #[test]
+    fn run_release_flag_selects_release_mode() {
+        let cli = Cli::parse_from(["zora", "run", "--release"]);
+
+        assert_eq!(resolved_mode(&cli.command), CompilationMode::Release);
+    }
+
+    #[test]
+    fn run_forwards_program_args_after_release_flag() {
+        let cli = Cli::parse_from(["zora", "run", "--release", "--", "one", "two"]);
+
+        let Commands::Run(args) = &cli.command else {
+            panic!("expected run command");
+        };
+
+        assert_eq!(args.mode.resolve(), CompilationMode::Release);
+        assert_eq!(args.program_args, vec!["one", "two"]);
+    }
+
+    #[test]
+    fn release_conflicts_with_debug() {
+        let result = Cli::try_parse_from(["zora", "build", "--release", "--debug"]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn release_conflicts_with_mode() {
+        let result = Cli::try_parse_from(["zora", "build", "--release", "--mode", "Debug"]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn debug_conflicts_with_mode() {
+        let result = Cli::try_parse_from(["zora", "build", "--debug", "--mode", "Release"]);
+
+        assert!(result.is_err());
+    }
 }

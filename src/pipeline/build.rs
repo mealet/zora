@@ -20,6 +20,7 @@ type RunArtifact = PathBuf;
 
 pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Option<RunArtifact> {
     let lockfile = cmd_check(manifest, root, true);
+    let mode = args.mode.resolve();
 
     // basic dist directory
     fs::create_dir_all(root.join("dist")).unwrap_or_else(|err| {
@@ -43,7 +44,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
     }
 
     // output mode directory
-    let output_dir = match args.mode {
+    let output_dir = match mode {
         CompilationMode::Debug => target_dir.join("debug"),
         CompilationMode::Release => target_dir.join("release"),
     };
@@ -89,13 +90,13 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
 
     let fingerprint_path = output_dir.join(fingerprint::FINGERPRINT_FILE);
     let compiler_version = super::ZEEN_VERSION.0.to_string();
-    let mode = args.mode.to_string();
+    let mode_name = mode.to_string();
     let emit = args.emit.map(|emit| emit.to_string());
     let current_fingerprint = fingerprint::compute(
         root,
         &fingerprint::BuildInputs {
             compiler_version: &compiler_version,
-            mode: &mode,
+            mode: &mode_name,
             target: args.target.as_deref(),
             emit: emit.as_deref(),
         },
@@ -131,7 +132,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                 compiler_cmd.arg("--target").arg(target);
             }
 
-            compiler_cmd.arg("--mode").arg(args.mode.to_string());
+            compiler_cmd.arg("--mode").arg(mode.to_string());
             apply_pkg_args(&mut compiler_cmd, &lockfile, root);
             apply_link_args(&mut compiler_cmd, &lockfile, root, &target);
 
@@ -155,7 +156,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                     .arg(TYPE_LIB_ENTRY)
                     .arg(&output_path)
                     .arg("--mode")
-                    .arg(args.mode.to_string())
+                    .arg(mode.to_string())
                     .arg("--emit")
                     .arg(emit.to_string());
 
@@ -187,7 +188,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                 .arg(&output_path)
                 .args(compiler_flags)
                 .arg("--mode")
-                .arg(args.mode.to_string())
+                .arg(mode.to_string())
                 .args(["--emit", "OBJ"]);
 
             if let Some(ref target) = args.target {
@@ -240,7 +241,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                     .arg(TYPE_LIB_ENTRY)
                     .arg(&output_path)
                     .arg("--mode")
-                    .arg(args.mode.to_string())
+                    .arg(mode.to_string())
                     .arg("--emit")
                     .arg(emit.to_string());
 
@@ -272,7 +273,7 @@ pub fn cmd_build(args: cli::BuildArgs, manifest: &Manifest, root: &Path) -> Opti
                 .arg(&output_path)
                 .args(compiler_flags)
                 .arg("--mode")
-                .arg(args.mode.to_string())
+                .arg(mode.to_string())
                 .args(["--emit", "OBJ"]);
 
             if let Some(ref target) = args.target {
@@ -405,7 +406,11 @@ mod tests {
 
     fn build_args(target: Option<&str>, emit: Option<cli::CompilationOutput>) -> cli::BuildArgs {
         cli::BuildArgs {
-            mode: cli::CompilationMode::Debug,
+            mode: cli::ModeArgs {
+                mode: cli::CompilationMode::Debug,
+                release: false,
+                debug: false,
+            },
             target: target.map(str::to_owned),
             emit,
         }
